@@ -99,6 +99,22 @@ async function initDb() {
     );
   `);
 
+  // -----------------------------------------------------------------------
+  // เก็บรูปอุปกรณ์ "ถาวร" ไว้ในฐานข้อมูล Postgres เอง (คอลัมน์ BYTEA) แทนการ
+  // เซฟไฟล์ลงดิสก์ของ web service เพราะดิสก์ของ Render (แผนฟรี) เป็นแบบชั่วคราว
+  // ไฟล์จะหายทุกครั้งที่ deploy ใหม่ — ส่วน Postgres เป็นฐานข้อมูลแยกต่างหาก
+  // ที่อยู่ถาวรอยู่แล้ว ใช้ ALTER TABLE ... ADD COLUMN IF NOT EXISTS เพื่อให้รันซ้ำ
+  // ได้ทุกครั้งที่เซิร์ฟเวอร์เริ่มทำงานโดยไม่พังถ้าคอลัมน์มีอยู่แล้ว (migration แบบง่าย)
+  await pool.query(`
+    ALTER TABLE equipment ADD COLUMN IF NOT EXISTS image_data BYTEA;
+    ALTER TABLE equipment ADD COLUMN IF NOT EXISTS image_mime TEXT;
+    ALTER TABLE equipment ADD COLUMN IF NOT EXISTS image_version INTEGER NOT NULL DEFAULT 0;
+  `);
+  // ล้างค่า image_url เก่าที่เคยชี้ไปที่ไฟล์บนดิสก์ (/uploads/...) ทิ้ง เพราะไฟล์พวกนั้น
+  // หายไปแล้วตั้งแต่ deploy ครั้งก่อนๆ (เก็บไว้จะกลายเป็นลิงก์รูปที่เสีย) — ทำเฉพาะแถวที่
+  // ยังไม่มี image_data ใหม่ (ยังไม่เคยอัปโหลดซ้ำด้วยระบบเก็บถาวรตัวนี้)
+  await pool.query(`UPDATE equipment SET image_url = NULL WHERE image_url LIKE '/uploads/%' AND image_data IS NULL`);
+
   const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM equipment');
   if (rows[0].count === 0) {
     console.log('[db] ฐานข้อมูลว่างเปล่า กำลังเติมข้อมูลตัวอย่าง...');
