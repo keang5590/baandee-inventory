@@ -140,6 +140,14 @@
             <!-- สรุปยอดต่อหมวด สร้างด้วย JS -->
           </div>
 
+          <div class="side-card expense-chart-card">
+            <div class="side-card-header"><span>กราฟค่าใช้จ่ายแยกตามหมวดหมู่</span></div>
+            <div class="expense-chart-wrap" id="expenseChartWrap">
+              <canvas id="expenseChart"></canvas>
+              <div class="empty-hint hidden" id="expenseChartEmpty">ยังไม่มีค่าใช้จ่ายให้แสดงกราฟ</div>
+            </div>
+          </div>
+
           <div class="table-wrap">
             <table class="data-table" id="expenseTable">
               <thead>
@@ -336,6 +344,7 @@
   </div>
 </div>
 
+<script src="vendor/chart.umd.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
