@@ -9,6 +9,7 @@
   --muted: #8a8f98;
   --green: #22b573;
   --amber: #f5b400;
+  --orange: #f97316;
   --red: #e5484d;
   --border: #e7e8eb;
   --radius: 12px;
@@ -249,6 +250,13 @@ h1 { font-size: 24px; margin: 0 0 4px; }
   transition: background var(--ease);
 }
 .booking-confirm-btn:hover { background: var(--yellow-dark); }
+.booking-status-badge {
+  display: inline-block; padding: 4px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 700;
+}
+.booking-status-badge.orange { background: rgba(249, 115, 22, 0.12); color: var(--orange); }
+.booking-status-badge.green { background: rgba(34, 181, 115, 0.12); color: var(--green); }
+.booking-status-badge.red { background: rgba(229, 72, 77, 0.12); color: var(--red); }
 .legend { margin-top: 14px; font-size: 12px; color: #555; }
 .legend-title { font-weight: 700; margin-bottom: 6px; color: #333; }
 .legend div { display: flex; align-items: center; margin-bottom: 4px; }
