@@ -6,10 +6,42 @@
 require('dotenv').config(); // โหลดค่าจากไฟล์ .env ถ้ามี (ไม่มีก็ข้ามเฉยๆ ไม่ error) — ใช้ตอน dev ในเครื่อง
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const { pool, initDb } = require('./db/init.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// -----------------------------------------------------------------------
+// ตั้งค่าที่เก็บรูปอุปกรณ์ที่อัปโหลด — เก็บไว้ในโฟลเดอร์ uploads/ ที่ระดับ
+// เดียวกับ server.js (แยกจาก public/ ซึ่งเป็นไฟล์หน้าเว็บล้วนๆ)
+//
+// ข้อควรรู้: ดิสก์ของ Render (แผนฟรี) เป็นแบบชั่วคราว — ไฟล์ที่อัปโหลดจะหาย
+// ทุกครั้งที่ deploy ใหม่หรือเซิร์ฟเวอร์รีสตาร์ท ถ้าจะให้รูปอยู่ถาวรจริงๆ ต้อง
+// อัปเกรดเป็น Persistent Disk (แผนเสียเงิน) หรือย้ายไปเก็บที่บริการเก็บไฟล์
+// ภายนอก (เช่น Cloudinary, S3) แทน — ใช้งานได้ปกติตอนรันในเครื่องเสมอ
+// -----------------------------------------------------------------------
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+    filename: (req, file, cb) => {
+      // ตั้งชื่อไฟล์ใหม่ไม่ให้ซ้ำกัน: equipment-<id>-<เวลาปัจจุบัน>.<นามสกุลเดิม>
+      const ext = path.extname(file.originalname).toLowerCase();
+      cb(null, `equipment-${req.params.id}-${Date.now()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 }, // จำกัดไฟล์ไม่เกิน 5MB
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('อัปโหลดได้เฉพาะไฟล์รูปภาพเท่านั้น'));
+    }
+    cb(null, true);
+  },
+});
 
 app.use(express.json());
 // ปิดการแคชไฟล์หน้าเว็บ (HTML/CSS/JS) ไว้ก่อน เพื่อไม่ให้เบราว์เซอร์ค้างเวอร์ชันเก่า
@@ -19,6 +51,8 @@ app.use(express.static(path.join(__dirname, 'public'), {
   lastModified: false,
   setHeaders: (res) => res.set('Cache-Control', 'no-store'),
 }));
+// รูปที่อัปโหลดแล้วให้แคชได้ตามปกติ (ชื่อไฟล์ไม่ซ้ำกันต่อการอัปโหลดแต่ละครั้งอยู่แล้ว)
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // helper ครอบ error ของ route แบบ async ให้ตอบกลับเป็น JSON เสมอ
 // (แทนการเขียน try/catch ซ้ำๆ ในทุก endpoint)
@@ -100,6 +134,40 @@ app.delete('/api/equipment/:id', wrap(async (req, res) => {
   await pool.query('DELETE FROM equipment WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
+
+// อัปโหลดรูปอุปกรณ์ — รับไฟล์ผ่าน multipart/form-data ชื่อฟิลด์ 'image'
+// แล้วบันทึก path ('/uploads/xxx.jpg') ลงคอลัมน์ image_url ของอุปกรณ์ชิ้นนั้น
+app.post('/api/equipment/:id/image', (req, res) => {
+  upload.single('image')(req, res, async (err) => {
+    if (err) {
+      // ครอบ error ของ multer เอง (ไฟล์ใหญ่เกิน, ไม่ใช่รูปภาพ ฯลฯ) ให้ตอบเป็น JSON เหมือน endpoint อื่น
+      return res.status(400).json({ error: err.message });
+    }
+    if (!req.file) return res.status(400).json({ error: 'ไม่พบไฟล์รูปที่อัปโหลด' });
+
+    try {
+      const { rows: existing } = await pool.query('SELECT image_url FROM equipment WHERE id = $1', [req.params.id]);
+      if (!existing.length) {
+        fs.unlink(req.file.path, () => {}); // ไม่เจออุปกรณ์นี้ ลบไฟล์ที่เพิ่งอัปโหลดทิ้งไป ไม่ให้ค้างเป็นขยะ
+        return res.status(404).json({ error: 'ไม่พบอุปกรณ์นี้' });
+      }
+
+      const image_url = `/uploads/${req.file.filename}`;
+      await pool.query('UPDATE equipment SET image_url = $1 WHERE id = $2', [image_url, req.params.id]);
+
+      // ลบไฟล์รูปเก่าทิ้ง (ถ้าเคยอัปโหลดไว้ก่อนหน้านี้) กันไฟล์ค้างสะสมในดิสก์
+      const oldUrl = existing[0].image_url;
+      if (oldUrl && oldUrl.startsWith('/uploads/')) {
+        fs.unlink(path.join(UPLOADS_DIR, path.basename(oldUrl)), () => {});
+      }
+
+      res.json({ ok: true, image_url });
+    } catch (dbErr) {
+      fs.unlink(req.file.path, () => {});
+      res.status(500).json({ error: dbErr.message });
+    }
+  });
+});
 
 // ========================= EVENTS (งานออกบูธ) =========================
 app.get('/api/events', wrap(async (req, res) => {
