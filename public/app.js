@@ -348,6 +348,80 @@ async function renderExpenseSummary() {
       (c) => `<div class="side-row"><span>${c.category_icon || ''} ${c.category_name}</span><span>฿${money(c.total)}</span></div>`
     )
     .join('');
+
+  renderExpenseChart(byCategory);
+}
+
+let expenseChartInstance = null; // อ้างอิง Chart.js instance ปัจจุบัน — ต้อง destroy() ก่อนวาดใหม่ทุกครั้ง
+// กันปัญหา "Canvas is already in use" ตอนสลับแท็บ/เปลี่ยนตัวกรองงานออกบูธซ้ำๆ
+
+function renderExpenseChart(byCategory) {
+  const canvas = document.getElementById('expenseChart');
+  const emptyHint = document.getElementById('expenseChartEmpty');
+  const rows = byCategory.filter((c) => c.total > 0); // หมวดที่ยังไม่มีค่าใช้จ่ายเลย ไม่ต้องโชว์แท่งเปล่าๆ
+
+  if (expenseChartInstance) {
+    expenseChartInstance.destroy();
+    expenseChartInstance = null;
+  }
+
+  if (!rows.length) {
+    canvas.classList.add('hidden');
+    emptyHint.classList.remove('hidden');
+    return;
+  }
+  canvas.classList.remove('hidden');
+  emptyHint.classList.add('hidden');
+
+  // ความสูงกราฟปรับตามจำนวนหมวด กันแท่งอัดกันแน่นเกินไปถ้ามีหลายหมวด
+  canvas.parentElement.style.height = `${Math.max(120, rows.length * 40)}px`;
+
+  const labels = rows.map((c) => `${c.category_icon || '💰'} ${c.category_name}`);
+  const totals = rows.map((c) => c.total);
+
+  expenseChartInstance = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          data: totals,
+          backgroundColor: '#f5b400', // สีเดียวทั้งกราฟ — เป็นข้อมูลชุดเดียว (ยอดค่าใช้จ่าย) ไม่ใช่หลายซีรีส์
+          borderRadius: 4,
+          borderSkipped: 'start', // มุมโค้งเฉพาะปลายแท่ง ฝั่งฐาน (แกน y) เหลี่ยมตามปกติ
+          maxBarThickness: 24,
+          categoryPercentage: 0.7,
+        },
+      ],
+    },
+    options: {
+      indexAxis: 'y', // แท่งแนวนอน — อ่านชื่อหมวดหมู่ภาษาไทยยาวๆ ได้ง่ายกว่าแนวตั้ง
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }, // มีข้อมูลชุดเดียว ไม่ต้องมี legend (ชื่อหมวดอยู่ที่แกนอยู่แล้ว)
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `฿${money(ctx.parsed.x)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          grid: { color: '#e7e8eb' }, // เส้นกริดจางๆ สีเดียวกับ --border ในธีมหลัก
+          ticks: {
+            color: '#8a8f98',
+            callback: (v) => `฿${Number(v).toLocaleString('th-TH')}`,
+          },
+        },
+        y: {
+          grid: { display: false },
+          ticks: { color: '#222' },
+        },
+      },
+    },
+  });
 }
 
 async function renderExpenseTable() {
