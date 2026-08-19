@@ -47,6 +47,7 @@ function initTabs() {
       if (tab === 'bookings') loadBookingsTab();
       if (tab === 'home') loadHomeTab();
       if (tab === 'mybooths') loadMyBoothsTab();
+      if (tab === 'warehouse') loadWarehouseTab();
     });
   });
 }
@@ -530,12 +531,128 @@ function initBoothModal() {
 }
 
 // ========================================================================
+// TAB: คลังอุปกรณ์ (จัดการสต็อก — เพิ่ม/แก้ไข/ลบอุปกรณ์)
+// ใช้ /api/equipment ตัวเดียวกับแท็บ "อุปกรณ์ทั้งหมด" — เพียงแต่แท็บนี้แสดงเป็น
+// ตารางจัดการสต็อกแทนที่จะเป็นกริดสำหรับเลือกอุปกรณ์ไปออกบูธ
+// ========================================================================
+let editingEquipmentId = null; // null = กำลังเพิ่มใหม่, ไม่ null = กำลังแก้ไขอุปกรณ์ตัวนี้อยู่
+
+async function loadWarehouseTab() {
+  const list = await api('/api/equipment');
+  renderWarehouseTable(list);
+}
+
+function renderWarehouseTable(list) {
+  const tbody = document.getElementById('warehouseTableBody');
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:20px;">ยังไม่มีอุปกรณ์ในคลัง กด "+ เพิ่มอุปกรณ์ใหม่" เพื่อเริ่มต้น</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list
+    .map((item) => {
+      const [dotClass, label] = statusLabel[item.status] || statusLabel.available;
+      const thumb = item.image_url
+        ? `<img src="${item.image_url}" alt="${item.name}" style="width:36px;height:36px;border-radius:8px;object-fit:cover;" />`
+        : `<span style="font-size:20px;">${item.category_icon || '📦'}</span>`;
+      return `
+      <tr>
+        <td>${thumb}</td>
+        <td>${item.code}</td>
+        <td>${item.name}</td>
+        <td>${item.category_icon || ''} ${item.category_name || '— ไม่ระบุ —'}</td>
+        <td class="right">${item.stock_qty} ชิ้น</td>
+        <td><span class="status-dot ${dotClass}"></span>${label}</td>
+        <td>
+          <button class="btn-outline sm equip-edit-btn" data-id="${item.id}">แก้ไข</button>
+          <button class="row-del equip-del-btn" data-id="${item.id}">ลบ</button>
+        </td>
+      </tr>`;
+    })
+    .join('');
+
+  tbody.querySelectorAll('.equip-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const item = list.find((e) => String(e.id) === btn.dataset.id);
+      openEquipmentModal(item || null);
+    });
+  });
+  tbody.querySelectorAll('.equip-del-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const item = list.find((e) => String(e.id) === btn.dataset.id);
+      if (!confirm(`ลบอุปกรณ์ "${item ? item.name : ''}" ออกจากคลังหรือไม่?`)) return;
+      try {
+        await api(`/api/equipment/${btn.dataset.id}`, { method: 'DELETE' });
+      } catch (err) {
+        alert(err.message);
+        return;
+      }
+      await loadWarehouseTab();
+      await loadEquipment(); // อัปเดตแท็บ "อุปกรณ์ทั้งหมด" ให้ตรงกันด้วย
+    });
+  });
+}
+
+function populateEquipmentCategorySelect() {
+  const sel = document.getElementById('equipmentFormCategory');
+  const opts = state.categories.map((c) => `<option value="${c.id}">${c.icon || '📦'} ${c.name}</option>`).join('');
+  sel.innerHTML = '<option value="">— ไม่ระบุ —</option>' + opts;
+}
+
+function openEquipmentModal(item) {
+  populateEquipmentCategorySelect();
+  editingEquipmentId = item ? item.id : null;
+  document.getElementById('equipmentModalTitle').textContent = item ? 'แก้ไขอุปกรณ์' : 'เพิ่มอุปกรณ์ใหม่';
+  document.getElementById('equipmentFormCode').value = item ? item.code : '';
+  document.getElementById('equipmentFormName').value = item ? item.name : '';
+  document.getElementById('equipmentFormCategory').value = item && item.category_id ? item.category_id : '';
+  document.getElementById('equipmentFormStock').value = item ? item.stock_qty : 0;
+  document.getElementById('equipmentFormStatus').value = item ? item.status : 'available';
+  openModal('equipmentModal');
+}
+
+function initEquipmentModal() {
+  document.getElementById('btnNewEquipmentInline').addEventListener('click', () => openEquipmentModal(null));
+  document.getElementById('btnCancelEquipment').addEventListener('click', () => closeModal('equipmentModal'));
+
+  document.getElementById('btnSaveEquipment').addEventListener('click', async () => {
+    const code = document.getElementById('equipmentFormCode').value.trim();
+    const name = document.getElementById('equipmentFormName').value.trim();
+    const category_id = document.getElementById('equipmentFormCategory').value || null;
+    const stock_qty = Number(document.getElementById('equipmentFormStock').value) || 0;
+    const status = document.getElementById('equipmentFormStatus').value;
+    if (!code || !name) { alert('กรุณาระบุรหัสอุปกรณ์และชื่ออุปกรณ์'); return; }
+
+    try {
+      if (editingEquipmentId) {
+        await api(`/api/equipment/${editingEquipmentId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ code, name, category_id, stock_qty, status }),
+        });
+      } else {
+        await api('/api/equipment', {
+          method: 'POST',
+          body: JSON.stringify({ code, name, category_id, stock_qty, status }),
+        });
+      }
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+
+    closeModal('equipmentModal');
+    await loadWarehouseTab();
+    await loadEquipment(); // อัปเดตแท็บ "อุปกรณ์ทั้งหมด" ให้ตรงกันด้วย
+  });
+}
+
+// ========================================================================
 // INIT
 // ========================================================================
 async function init() {
   initTabs();
   initExpenseModals();
   initBoothModal();
+  initEquipmentModal();
 
   document.getElementById('searchBox').addEventListener('input', debounce(loadEquipment, 300));
   document.getElementById('statusFilter').addEventListener('change', loadEquipment);
