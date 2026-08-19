@@ -9,6 +9,7 @@
 // ใช้ฐานข้อมูลแยกต่างหาก (managed database) แบบ Postgres นี้
 // -----------------------------------------------------------------------
 const { Pool, types } = require('pg');
+const bcrypt = require('bcryptjs');
 
 // ค่ามาตรฐานของ pg จะแปลงคอลัมน์ DATE เป็น JS Date object ซึ่งมักเพี้ยนวันที่
 // เพราะปัญหา timezone ตอนแปลงกลับเป็น string — เราจึงสั่งให้ส่งค่ากลับเป็น
@@ -38,6 +39,14 @@ pool.on('error', (err) => {
 
 async function initDb() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id             SERIAL PRIMARY KEY,
+      username       TEXT NOT NULL UNIQUE,
+      password_hash  TEXT NOT NULL,
+      display_name   TEXT NOT NULL,
+      created_at     TIMESTAMPTZ DEFAULT now()
+    );
+
     CREATE TABLE IF NOT EXISTS categories (
       id    SERIAL PRIMARY KEY,
       name  TEXT NOT NULL UNIQUE,
@@ -115,12 +124,41 @@ async function initDb() {
   // ยังไม่มี image_data ใหม่ (ยังไม่เคยอัปโหลดซ้ำด้วยระบบเก็บถาวรตัวนี้)
   await pool.query(`UPDATE equipment SET image_url = NULL WHERE image_url LIKE '/uploads/%' AND image_data IS NULL`);
 
+  // ตาราง events (รายการออกบูธ) เดิมไม่มีคอลัมน์เก็บว่าใครสร้าง — เพิ่มเข้ามาให้
+  // ระบบล็อกอินเอาไว้บันทึกชื่อผู้สร้างตอนสร้างรายการออกบูธใหม่
+  await pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS created_by TEXT;`);
+
   const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM equipment');
   if (rows[0].count === 0) {
     console.log('[db] ฐานข้อมูลว่างเปล่า กำลังเติมข้อมูลตัวอย่าง...');
     await seed();
     console.log('[db] เติมข้อมูลตัวอย่างเรียบร้อย');
   }
+
+  await seedUsers();
+}
+
+// สร้างบัญชีผู้ใช้เริ่มต้นให้ 3 คน (ทำครั้งเดียวตอนตาราง users ยังว่างอยู่ — เช็คแยก
+// จากการเติมข้อมูลตัวอย่างอุปกรณ์ด้านบน เพราะสองอย่างนี้เป็นคนละเรื่องกัน) รหัสผ่าน
+// เข้ารหัสด้วย bcrypt ก่อนเก็บลงฐานข้อมูลเสมอ ไม่เก็บรหัสผ่านตัวจริงไว้ที่ไหนเลย
+async function seedUsers() {
+  const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM users');
+  if (rows[0].count > 0) return; // มีผู้ใช้อยู่แล้ว ไม่ต้องสร้างซ้ำ
+
+  console.log('[db] ยังไม่มีผู้ใช้ในระบบ กำลังสร้างบัญชีเริ่มต้น 3 บัญชี...');
+  const initialUsers = [
+    { username: 'user1', password: 'MangoHarbor8820!', display_name: 'User 1' },
+    { username: 'user2', password: 'LemonDelta7281!', display_name: 'User 2' },
+    { username: 'user3', password: 'PixelMaple7334!', display_name: 'User 3' },
+  ];
+  for (const u of initialUsers) {
+    const password_hash = await bcrypt.hash(u.password, 10);
+    await pool.query(
+      'INSERT INTO users (username, password_hash, display_name) VALUES ($1, $2, $3)',
+      [u.username, password_hash, u.display_name]
+    );
+  }
+  console.log('[db] สร้างบัญชีผู้ใช้เริ่มต้นเรียบร้อย (username: user1, user2, user3)');
 }
 
 async function seed() {
