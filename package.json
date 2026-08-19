@@ -19,5 +19,8 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "chart.js": "^4.5.1"
   }
 }
