@@ -47,12 +47,13 @@
         <span class="icon-btn">🔔</span>
         <span class="icon-btn">🛒 <span id="cartCount">0</span></span>
         <div class="user-chip">
-          <div class="avatar">T</div>
+          <div class="avatar" id="userAvatar">?</div>
           <div>
-            <div class="user-name">Tanatorn Y.</div>
-            <div class="user-role">Marketing</div>
+            <div class="user-name" id="userName">กำลังโหลด...</div>
+            <div class="user-role">ทีมงาน</div>
           </div>
         </div>
+        <button class="logout-btn" id="btnLogout">ออกจากระบบ</button>
       </div>
     </header>
 
@@ -185,7 +186,7 @@
         <div class="table-wrap">
           <table class="data-table" id="bookingsTable">
             <thead>
-              <tr><th>#</th><th>งานออกบูธ</th><th>สถานะ</th><th>รายการอุปกรณ์</th><th>สร้างเมื่อ</th></tr>
+              <tr><th>#</th><th>งานออกบูธ</th><th>สถานะ</th><th>รายการอุปกรณ์</th><th>สร้างโดย</th><th>สร้างเมื่อ</th></tr>
             </thead>
             <tbody id="bookingsTableBody"></tbody>
           </table>
