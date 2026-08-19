@@ -9,10 +9,10 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const { pool, initDb } = require('./db/init.js');
- 
+
 const app = express();
 const PORT = process.env.PORT || 3000;
- 
+
 // -----------------------------------------------------------------------
 // ตั้งค่าที่เก็บรูปอุปกรณ์ที่อัปโหลด — เก็บไว้ในโฟลเดอร์ uploads/ ที่ระดับ
 // เดียวกับ server.js (แยกจาก public/ ซึ่งเป็นไฟล์หน้าเว็บล้วนๆ)
@@ -24,7 +24,7 @@ const PORT = process.env.PORT || 3000;
 // -----------------------------------------------------------------------
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
- 
+
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, UPLOADS_DIR),
@@ -42,7 +42,7 @@ const upload = multer({
     cb(null, true);
   },
 });
- 
+
 app.use(express.json());
 // ปิดการแคชไฟล์หน้าเว็บ (HTML/CSS/JS) ไว้ก่อน เพื่อไม่ให้เบราว์เซอร์ค้างเวอร์ชันเก่า
 // ไว้ตอนแก้โค้ดแล้ว refresh หน้าเว็บแล้วเห็นการเปลี่ยนแปลงทันที (สำคัญมากตอนกำลังเรียนรู้/แก้บั๊ก)
@@ -53,7 +53,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 // รูปที่อัปโหลดแล้วให้แคชได้ตามปกติ (ชื่อไฟล์ไม่ซ้ำกันต่อการอัปโหลดแต่ละครั้งอยู่แล้ว)
 app.use('/uploads', express.static(UPLOADS_DIR));
- 
+
 // helper ครอบ error ของ route แบบ async ให้ตอบกลับเป็น JSON เสมอ
 // (แทนการเขียน try/catch ซ้ำๆ ในทุก endpoint)
 const wrap = (fn) => async (req, res) => {
@@ -64,18 +64,18 @@ const wrap = (fn) => async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
- 
+
 app.get('/api/health', wrap(async (req, res) => {
   await pool.query('SELECT 1');
   res.json({ ok: true });
 }));
- 
+
 // ========================= CATEGORIES (หมวดอุปกรณ์) =========================
 app.get('/api/categories', wrap(async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM categories ORDER BY id');
   res.json(rows);
 }));
- 
+
 // ========================= EQUIPMENT (อุปกรณ์ / สต็อก) =========================
 app.get('/api/equipment', wrap(async (req, res) => {
   const { q, category_id, status } = req.query;
@@ -102,7 +102,7 @@ app.get('/api/equipment', wrap(async (req, res) => {
   const { rows } = await pool.query(sql, params);
   res.json(rows);
 }));
- 
+
 app.post('/api/equipment', wrap(async (req, res) => {
   const { code, name, category_id, stock_qty, status, image_url } = req.body;
   if (!code || !name) return res.status(400).json({ error: 'ต้องระบุ code และ name' });
@@ -113,7 +113,7 @@ app.post('/api/equipment', wrap(async (req, res) => {
   );
   res.status(201).json({ id: rows[0].id });
 }));
- 
+
 app.patch('/api/equipment/:id', wrap(async (req, res) => {
   const fields = ['code', 'name', 'category_id', 'stock_qty', 'status', 'image_url'];
   const updates = [];
@@ -129,12 +129,12 @@ app.patch('/api/equipment/:id', wrap(async (req, res) => {
   await pool.query(`UPDATE equipment SET ${updates.join(', ')} WHERE id = $${params.length}`, params);
   res.json({ ok: true });
 }));
- 
+
 app.delete('/api/equipment/:id', wrap(async (req, res) => {
   await pool.query('DELETE FROM equipment WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
- 
+
 // อัปโหลดรูปอุปกรณ์ — รับไฟล์ผ่าน multipart/form-data ชื่อฟิลด์ 'image'
 // แล้วบันทึก path ('/uploads/xxx.jpg') ลงคอลัมน์ image_url ของอุปกรณ์ชิ้นนั้น
 app.post('/api/equipment/:id/image', (req, res) => {
@@ -144,23 +144,23 @@ app.post('/api/equipment/:id/image', (req, res) => {
       return res.status(400).json({ error: err.message });
     }
     if (!req.file) return res.status(400).json({ error: 'ไม่พบไฟล์รูปที่อัปโหลด' });
- 
+
     try {
       const { rows: existing } = await pool.query('SELECT image_url FROM equipment WHERE id = $1', [req.params.id]);
       if (!existing.length) {
         fs.unlink(req.file.path, () => {}); // ไม่เจออุปกรณ์นี้ ลบไฟล์ที่เพิ่งอัปโหลดทิ้งไป ไม่ให้ค้างเป็นขยะ
         return res.status(404).json({ error: 'ไม่พบอุปกรณ์นี้' });
       }
- 
+
       const image_url = `/uploads/${req.file.filename}`;
       await pool.query('UPDATE equipment SET image_url = $1 WHERE id = $2', [image_url, req.params.id]);
- 
+
       // ลบไฟล์รูปเก่าทิ้ง (ถ้าเคยอัปโหลดไว้ก่อนหน้านี้) กันไฟล์ค้างสะสมในดิสก์
       const oldUrl = existing[0].image_url;
       if (oldUrl && oldUrl.startsWith('/uploads/')) {
         fs.unlink(path.join(UPLOADS_DIR, path.basename(oldUrl)), () => {});
       }
- 
+
       res.json({ ok: true, image_url });
     } catch (dbErr) {
       fs.unlink(req.file.path, () => {});
@@ -168,13 +168,13 @@ app.post('/api/equipment/:id/image', (req, res) => {
     }
   });
 });
- 
+
 // ========================= EVENTS (งานออกบูธ) =========================
 app.get('/api/events', wrap(async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM events ORDER BY id DESC');
   res.json(rows);
 }));
- 
+
 app.post('/api/events', wrap(async (req, res) => {
   const { name, location, start_date, end_date } = req.body;
   if (!name) return res.status(400).json({ error: 'ต้องระบุชื่องาน' });
@@ -184,7 +184,7 @@ app.post('/api/events', wrap(async (req, res) => {
   );
   res.status(201).json({ id: rows[0].id });
 }));
- 
+
 // ลบรายการออกบูธ 1 งาน — ลบข้อมูลที่ผูกกับงานนี้ไปด้วย (การจอง/รายการอุปกรณ์ในบิล/ค่าใช้จ่าย)
 // เพราะตอนสร้างตารางไม่ได้ตั้ง ON DELETE CASCADE ไว้ตั้งแต่แรก จึงต้องลบตามลำดับเองในทรานแซกชันเดียว
 // และคืนสถานะอุปกรณ์ที่เคยถูกจอง (reserved) ไว้ในงานนี้ให้กลับเป็น "พร้อมใช้งาน" ไม่ให้ค้างสถานะตลอดไป
@@ -193,13 +193,13 @@ app.delete('/api/events/:id', wrap(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
- 
+
     const { rows: existing } = await client.query('SELECT id FROM events WHERE id = $1', [eventId]);
     if (!existing.length) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'ไม่พบรายการออกบูธนี้' });
     }
- 
+
     const { rows: equipIds } = await client.query(
       `SELECT DISTINCT bi.equipment_id
        FROM booking_items bi
@@ -207,21 +207,21 @@ app.delete('/api/events/:id', wrap(async (req, res) => {
        WHERE b.event_id = $1`,
       [eventId]
     );
- 
+
     await client.query(
       `DELETE FROM booking_items WHERE booking_id IN (SELECT id FROM bookings WHERE event_id = $1)`,
       [eventId]
     );
     await client.query('DELETE FROM bookings WHERE event_id = $1', [eventId]);
     await client.query('DELETE FROM expenses WHERE event_id = $1', [eventId]);
- 
+
     if (equipIds.length) {
       await client.query(
         `UPDATE equipment SET status = 'available' WHERE id = ANY($1::int[]) AND status = 'reserved'`,
         [equipIds.map((r) => r.equipment_id)]
       );
     }
- 
+
     await client.query('DELETE FROM events WHERE id = $1', [eventId]);
     await client.query('COMMIT');
     res.json({ ok: true });
@@ -232,7 +232,7 @@ app.delete('/api/events/:id', wrap(async (req, res) => {
     client.release();
   }
 }));
- 
+
 // ========================= BOOKINGS (การจองอุปกรณ์) =========================
 app.get('/api/bookings', wrap(async (req, res) => {
   const { rows: bookings } = await pool.query(`
@@ -253,11 +253,11 @@ app.get('/api/bookings', wrap(async (req, res) => {
   }
   res.json(bookings);
 }));
- 
+
 app.post('/api/bookings', wrap(async (req, res) => {
   const { event_id, created_by, items } = req.body; // items: [{equipment_id, qty}]
   if (!items || !items.length) return res.status(400).json({ error: 'ต้องเลือกอุปกรณ์อย่างน้อย 1 รายการ' });
- 
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -266,7 +266,7 @@ app.post('/api/bookings', wrap(async (req, res) => {
       [event_id || null, created_by || null]
     );
     const bookingId = rows[0].id;
- 
+
     for (const item of items) {
       await client.query(
         `INSERT INTO booking_items (booking_id, equipment_id, qty) VALUES ($1, $2, $3)`,
@@ -286,7 +286,7 @@ app.post('/api/bookings', wrap(async (req, res) => {
     client.release();
   }
 }));
- 
+
 app.patch('/api/bookings/:id', wrap(async (req, res) => {
   const { status } = req.body;
   if (!['pending', 'confirmed', 'cancelled'].includes(status)) {
@@ -295,13 +295,13 @@ app.patch('/api/bookings/:id', wrap(async (req, res) => {
   await pool.query('UPDATE bookings SET status = $1 WHERE id = $2', [status, req.params.id]);
   res.json({ ok: true });
 }));
- 
+
 // ========================= EXPENSE CATEGORIES (หมวดค่าใช้จ่าย) =========================
 app.get('/api/expense-categories', wrap(async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM expense_categories ORDER BY id');
   res.json(rows);
 }));
- 
+
 app.post('/api/expense-categories', wrap(async (req, res) => {
   const { name, icon } = req.body;
   if (!name) return res.status(400).json({ error: 'ต้องระบุชื่อหมวดค่าใช้จ่าย' });
@@ -311,12 +311,12 @@ app.post('/api/expense-categories', wrap(async (req, res) => {
   );
   res.status(201).json({ id: rows[0].id });
 }));
- 
+
 app.delete('/api/expense-categories/:id', wrap(async (req, res) => {
   await pool.query('DELETE FROM expense_categories WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
- 
+
 // ========================= EXPENSES (รายการค่าใช้จ่าย) =========================
 app.get('/api/expenses', wrap(async (req, res) => {
   const { event_id, category_id } = req.query;
@@ -336,7 +336,7 @@ app.get('/api/expenses', wrap(async (req, res) => {
   const { rows } = await pool.query(sql, params);
   res.json(rows);
 }));
- 
+
 app.post('/api/expenses', wrap(async (req, res) => {
   const { category_id, event_id, equipment_id, description, amount, expense_date } = req.body;
   if (!category_id || !amount) return res.status(400).json({ error: 'ต้องระบุหมวดหมู่และจำนวนเงิน' });
@@ -347,12 +347,12 @@ app.post('/api/expenses', wrap(async (req, res) => {
   );
   res.status(201).json({ id: rows[0].id });
 }));
- 
+
 app.delete('/api/expenses/:id', wrap(async (req, res) => {
   await pool.query('DELETE FROM expenses WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
- 
+
 // สรุปยอดค่าใช้จ่ายแยกตามหมวด (ใช้วาดการ์ดสรุปในแท็บหมวดค่าใช้จ่าย)
 app.get('/api/expenses/summary', wrap(async (req, res) => {
   const { event_id } = req.query;
@@ -374,7 +374,7 @@ app.get('/api/expenses/summary', wrap(async (req, res) => {
   const grandTotal = rows.reduce((sum, r) => sum + r.total, 0);
   res.json({ byCategory: rows, grandTotal });
 }));
- 
+
 async function main() {
   try {
     await initDb();
@@ -382,11 +382,10 @@ async function main() {
     console.error('[db] เชื่อมต่อหรือสร้างฐานข้อมูลไม่สำเร็จ:', err.message);
     process.exit(1);
   }
- 
+
   app.listen(PORT, () => {
     console.log(`\n🏠 บ้านดี Inventory กำลังทำงานที่ http://localhost:${PORT}\n`);
   });
 }
- 
+
 main();
- 
