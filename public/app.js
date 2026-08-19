@@ -256,11 +256,18 @@ async function submitBooking() {
     return;
   }
   const items = ids.map((id) => ({ equipment_id: Number(id), qty: state.cart[id] }));
-  await api('/api/bookings', {
-    method: 'POST',
-    // created_by ไม่ต้องส่งจากฝั่งนี้แล้ว — เซิร์ฟเวอร์ดึงชื่อจากผู้ใช้ที่ล็อกอินอยู่ให้เองอัตโนมัติ
-    body: JSON.stringify({ event_id: state.activeEventId, items }),
-  });
+  try {
+    await api('/api/bookings', {
+      method: 'POST',
+      // created_by ไม่ต้องส่งจากฝั่งนี้แล้ว — เซิร์ฟเวอร์ดึงชื่อจากผู้ใช้ที่ล็อกอินอยู่ให้เองอัตโนมัติ
+      body: JSON.stringify({ event_id: state.activeEventId, items }),
+    });
+  } catch (err) {
+    // เซิร์ฟเวอร์ตรวจสต็อกจริงก่อนบันทึกเสมอ — ถ้าของไม่พอ/ไม่พร้อมใช้งาน จะ throw ข้อความ
+    // ภาษาไทยที่อ่านเข้าใจได้เลยกลับมา (เช่น "... เหลือไม่พอ (คงเหลือ X ชิ้น...)")
+    alert(err.message);
+    return;
+  }
   state.cart = {};
   renderCart();
   await loadEquipment();
@@ -433,7 +440,7 @@ async function loadBookingsTab() {
   const rows = await api('/api/bookings');
   const tbody = document.getElementById('bookingsTableBody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">ยังไม่มีการจอง</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:20px;">ยังไม่มีการจอง</td></tr>';
     return;
   }
   tbody.innerHTML = rows
@@ -442,13 +449,40 @@ async function loadBookingsTab() {
       <tr>
         <td>#${b.id}</td>
         <td>${b.event_name || '-'}</td>
-        <td>${b.status}</td>
+        <td>${bookingStatusLabel[b.status] || b.status}</td>
         <td>${b.items.map((i) => `${i.equipment_name} ×${i.qty}`).join(', ')}</td>
         <td>${b.created_by || '-'}</td>
         <td>${b.created_at}</td>
+        <td>${
+          b.status === 'cancelled'
+            ? '<span class="created-by">ยกเลิกไปแล้ว</span>'
+            : `<button class="btn-outline sm booking-cancel-btn" data-id="${b.id}">ยกเลิกใบจอง</button>`
+        }</td>
       </tr>`
     )
     .join('');
+
+  tbody.querySelectorAll('.booking-cancel-btn').forEach((btn) => {
+    btn.addEventListener('click', () => cancelBooking(Number(btn.dataset.id)));
+  });
+}
+
+const bookingStatusLabel = { pending: 'รอตรวจสอบ', confirmed: 'ยืนยันแล้ว', cancelled: 'ยกเลิกแล้ว' };
+
+async function cancelBooking(id) {
+  if (!confirm(`ยกเลิกใบจอง #${id} หรือไม่?\nอุปกรณ์ในใบจองนี้จะถูกคืนสต็อกกลับให้อัตโนมัติ`)) return;
+  try {
+    await api(`/api/bookings/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'cancelled' }),
+    });
+  } catch (err) {
+    alert(err.message);
+    return;
+  }
+  // โหลดตารางการจองใหม่ + รายการอุปกรณ์ใหม่ (สต็อกที่คืนแล้วต้องอัปเดตให้เห็นทันที)
+  await loadBookingsTab();
+  await loadEquipment();
 }
 
 // ========================================================================
