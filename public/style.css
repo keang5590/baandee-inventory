@@ -218,6 +218,10 @@ h1 { font-size: 24px; margin: 0 0 4px; }
 .event-box { background: #fafafa; border-radius: 10px; padding: 12px; margin-bottom: 14px; }
 .event-name { font-weight: 700; font-size: 13px; }
 .event-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.expense-chart-card { margin-bottom: 20px; }
+.expense-chart-wrap canvas { max-width: 100%; }
+.expense-chart-wrap .empty-hint.hidden { display: none; }
+.expense-chart-wrap canvas.hidden { display: none; }
 
 .cart-list { min-height: 40px; margin-bottom: 12px; }
 .empty-hint { color: var(--muted); font-size: 13px; text-align: center; padding: 14px 0; }
