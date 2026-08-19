@@ -7,10 +7,39 @@ require('dotenv').config(); // โหลดค่าจากไฟล์ .env �
 const express = require('express');
 const path = require('path');
 const multer = require('multer');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 const { pool, initDb } = require('./db/init.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+// อยู่หลัง reverse proxy ของ Render (HTTPS terminate ที่ edge แล้วส่งต่อมาเป็น HTTP)
+// ต้องตั้งค่านี้ไว้ req.protocol ถึงจะรู้ว่า request จริงๆ มาทาง https หรือเปล่า
+app.set('trust proxy', 1);
+
+// -----------------------------------------------------------------------
+// ระบบล็อกอิน: ใช้ JWT (เซ็นด้วย secret key) เก็บไว้ใน cookie แบบ httpOnly
+// แทนการเก็บ session ไว้ในหน่วยความจำเซิร์ฟเวอร์ — เพราะ Render (แผนฟรี) รีสตาร์ท
+// โปรเซสได้บ่อย (deploy ใหม่/พักเครื่องตอนไม่มีคนใช้) ถ้าเก็บ session ไว้ในหน่วยความจำ
+// ผู้ใช้จะหลุดล็อกอินทุกครั้งที่เซิร์ฟเวอร์รีสตาร์ท ส่วน JWT ตรวจสอบได้จาก secret
+// อย่างเดียวไม่ต้องพึ่งหน่วยความจำ จึงอยู่ได้ทนแม้เซิร์ฟเวอร์จะรีสตาร์ทกี่ครั้งก็ตาม
+// -----------------------------------------------------------------------
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-change-me-before-production';
+if (!process.env.JWT_SECRET) {
+  console.warn('[auth] ไม่พบตัวแปรแวดล้อม JWT_SECRET — ใช้ค่า default ชั่วคราว (ไม่ปลอดภัยสำหรับใช้งานจริง ต้องตั้งค่าจริงก่อน deploy)');
+}
+const COOKIE_NAME = 'baandee_token';
+const TOKEN_TTL = '30d'; // จำการล็อกอินไว้ 30 วัน ไม่ต้องล็อกอินใหม่ทุกครั้งที่เปิดเว็บ
+const TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+function signToken(user) {
+  return jwt.sign(
+    { id: user.id, username: user.username, display_name: user.display_name },
+    JWT_SECRET,
+    { expiresIn: TOKEN_TTL }
+  );
+}
 
 // -----------------------------------------------------------------------
 // รูปอุปกรณ์ที่อัปโหลด: เก็บเป็น "ถาวร" ไว้ในคอลัมน์ BYTEA ของตาราง equipment
@@ -34,6 +63,24 @@ const upload = multer({
 });
 
 app.use(express.json());
+app.use(cookieParser());
+
+// ต้องล็อกอินก่อนถึงจะเข้าหน้าเว็บหลัก (index.html) ได้ — เช็ค cookie ก่อนที่
+// express.static (บรรทัดถัดไป) จะเสิร์ฟไฟล์ ถ้ายังไม่ล็อกอิน/token หมดอายุ ก็เด้ง
+// ไปหน้า /login.html แทน หน้า login เองและไฟล์ static อื่นๆ (css/js) ไม่ถูกกันไว้
+app.get(['/', '/index.html'], (req, res, next) => {
+  const token = req.cookies?.[COOKIE_NAME];
+  if (token) {
+    try {
+      jwt.verify(token, JWT_SECRET);
+      return next(); // ล็อกอินอยู่แล้ว ปล่อยให้ express.static เสิร์ฟหน้าเว็บตามปกติ
+    } catch (err) {
+      res.clearCookie(COOKIE_NAME);
+    }
+  }
+  res.redirect('/login.html');
+});
+
 // ปิดการแคชไฟล์หน้าเว็บ (HTML/CSS/JS) ไว้ก่อน เพื่อไม่ให้เบราว์เซอร์ค้างเวอร์ชันเก่า
 // ไว้ตอนแก้โค้ดแล้ว refresh หน้าเว็บแล้วเห็นการเปลี่ยนแปลงทันที (สำคัญมากตอนกำลังเรียนรู้/แก้บั๊ก)
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -57,6 +104,53 @@ app.get('/api/health', wrap(async (req, res) => {
   await pool.query('SELECT 1');
   res.json({ ok: true });
 }));
+
+// ========================= AUTH (ล็อกอิน / ล็อกเอาต์) =========================
+app.post('/api/login', wrap(async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน' });
+  }
+  const { rows } = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+  const user = rows[0];
+  // เช็ค bcrypt.compare เสมอแม้หา user ไม่เจอ (เทียบกับ hash เปล่าๆ) กันไม่ให้เดา
+  // จากเวลาตอบกลับได้ว่า username ไหนมีอยู่จริงในระบบหรือไม่ (timing attack)
+  const passwordOk = await bcrypt.compare(password, user ? user.password_hash : '$2b$10$invalidsaltinvalidsaltin');
+  if (!user || !passwordOk) {
+    return res.status(401).json({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
+  }
+  const token = signToken(user);
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: req.protocol === 'https',
+    sameSite: 'lax',
+    maxAge: TOKEN_MAX_AGE_MS,
+  });
+  res.json({ ok: true, user: { id: user.id, username: user.username, display_name: user.display_name } });
+}));
+
+app.post('/api/logout', (req, res) => {
+  res.clearCookie(COOKIE_NAME);
+  res.json({ ok: true });
+});
+
+// ทุก endpoint ใต้ /api ที่ประกาศ "หลัง" บรรทัดนี้ ต้องล็อกอินก่อนถึงจะเรียกได้
+// (health/login/logout ที่ประกาศไว้ข้างบนนี้ยังคงเรียกได้โดยไม่ต้องล็อกอิน)
+app.use('/api', (req, res, next) => {
+  const token = req.cookies?.[COOKIE_NAME];
+  if (!token) return res.status(401).json({ error: 'กรุณาเข้าสู่ระบบ' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (err) {
+    res.clearCookie(COOKIE_NAME);
+    res.status(401).json({ error: 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่' });
+  }
+});
+
+app.get('/api/me', (req, res) => {
+  res.json({ id: req.user.id, username: req.user.username, display_name: req.user.display_name });
+});
 
 // ========================= CATEGORIES (หมวดอุปกรณ์) =========================
 app.get('/api/categories', wrap(async (req, res) => {
@@ -217,9 +311,11 @@ app.get('/api/events', wrap(async (req, res) => {
 app.post('/api/events', wrap(async (req, res) => {
   const { name, location, start_date, end_date } = req.body;
   if (!name) return res.status(400).json({ error: 'ต้องระบุชื่องาน' });
+  // created_by ดึงจากผู้ใช้ที่ล็อกอินอยู่จริงเสมอ (ไม่รับค่าจาก client) กันไม่ให้
+  // ใครก็ได้ปลอมชื่อคนอื่นตอนสร้างรายการออกบูธ
   const { rows } = await pool.query(
-    `INSERT INTO events (name, location, start_date, end_date) VALUES ($1, $2, $3, $4) RETURNING id`,
-    [name, location || null, start_date || null, end_date || null]
+    `INSERT INTO events (name, location, start_date, end_date, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [name, location || null, start_date || null, end_date || null, req.user.display_name]
   );
   res.status(201).json({ id: rows[0].id });
 }));
@@ -294,15 +390,16 @@ app.get('/api/bookings', wrap(async (req, res) => {
 }));
 
 app.post('/api/bookings', wrap(async (req, res) => {
-  const { event_id, created_by, items } = req.body; // items: [{equipment_id, qty}]
+  const { event_id, items } = req.body; // items: [{equipment_id, qty}]
   if (!items || !items.length) return res.status(400).json({ error: 'ต้องเลือกอุปกรณ์อย่างน้อย 1 รายการ' });
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // created_by ดึงจากผู้ใช้ที่ล็อกอินอยู่จริงเสมอ (ไม่รับค่าจาก client) เหมือนกับ /api/events
     const { rows } = await client.query(
       `INSERT INTO bookings (event_id, created_by, status) VALUES ($1, $2, 'pending') RETURNING id`,
-      [event_id || null, created_by || null]
+      [event_id || null, req.user.display_name]
     );
     const bookingId = rows[0].id;
 
