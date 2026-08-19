@@ -1,0 +1,25 @@
+# docker-compose.yml
+# -----------------------------------------------------------------------
+# ใช้สำหรับรัน PostgreSQL ในเครื่องตอนพัฒนา (dev) เท่านั้น — ไม่ได้ใช้ตอน
+# deploy ขึ้น Render (Render มีฐานข้อมูล Postgres ของตัวเองให้แยกต่างหาก)
+#
+# วิธีใช้:
+#   docker compose up -d      # เปิดฐานข้อมูล
+#   cp .env.example .env      # ตั้งค่า DATABASE_URL ให้ตรงกับด้านล่าง
+#   npm install && npm start  # รันเว็บแอพ
+# -----------------------------------------------------------------------
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: baandee
+      POSTGRES_PASSWORD: baandee
+      POSTGRES_DB: baandee_inventory
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

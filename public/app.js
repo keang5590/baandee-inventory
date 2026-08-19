@@ -1,0 +1,494 @@
+// public/app.js
+// -----------------------------------------------------------------------
+// Vanilla JS ล้วนๆ ไม่มี framework — ทำหน้าที่:
+//   1) สลับแท็บ (tab) ต่างๆ ในหน้าเดียว (Single Page App แบบง่าย)
+//   2) เรียก API (fetch) ไปที่ server.js เพื่อโหลด/บันทึกข้อมูลจริงจาก SQLite
+//   3) วาด (render) การ์ดอุปกรณ์ ตะกร้าจอง และตารางค่าใช้จ่าย
+// -----------------------------------------------------------------------
+
+const state = {
+  categories: [],
+  equipment: [],
+  events: [],
+  expenseCategories: [],
+  cart: {}, // { equipment_id: qty }
+  activeEventId: null, // งานออกบูธที่กำลังเตรียมอยู่ตอนนี้
+};
+
+// ---------- helper: เรียก API ----------
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'เกิดข้อผิดพลาด' }));
+    throw new Error(err.error || 'เกิดข้อผิดพลาด');
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+const money = (n) => Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// ========================================================================
+// TAB SWITCHING
+// ========================================================================
+function initTabs() {
+  document.querySelectorAll('.nav-item').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      const tab = el.dataset.tab;
+      document.querySelectorAll('.nav-item').forEach((n) => n.classList.remove('active'));
+      el.classList.add('active');
+      document.querySelectorAll('.tab-panel').forEach((p) => p.classList.add('hidden'));
+      document.getElementById(`tab-${tab}`).classList.remove('hidden');
+
+      if (tab === 'expenses') loadExpensesTab();
+      if (tab === 'bookings') loadBookingsTab();
+      if (tab === 'home') loadHomeTab();
+      if (tab === 'mybooths') loadMyBoothsTab();
+    });
+  });
+}
+
+// ========================================================================
+// TAB: อุปกรณ์ทั้งหมด
+// ========================================================================
+async function loadCategories() {
+  state.categories = await api('/api/categories');
+  const wrap = document.getElementById('categoryFilters');
+  state.categories.forEach((c) => {
+    const btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.dataset.cat = c.id;
+    btn.textContent = `${c.icon || '📦'} ${c.name}`;
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#categoryFilters .chip').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadEquipment();
+    });
+    wrap.appendChild(btn);
+  });
+  document.querySelector('#categoryFilters .chip[data-cat=""]').addEventListener('click', (e) => {
+    document.querySelectorAll('#categoryFilters .chip').forEach((b) => b.classList.remove('active'));
+    e.target.classList.add('active');
+    loadEquipment();
+  });
+}
+
+async function loadEquipment() {
+  const q = document.getElementById('searchBox').value.trim();
+  const activeChip = document.querySelector('#categoryFilters .chip.active');
+  const category_id = activeChip ? activeChip.dataset.cat : '';
+  const status = document.getElementById('statusFilter').value;
+  const sort = document.getElementById('sortFilter').value;
+
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (category_id) params.set('category_id', category_id);
+  if (status) params.set('status', status);
+
+  let list = await api(`/api/equipment?${params.toString()}`);
+
+  if (sort === 'stock_asc') list = list.sort((a, b) => a.stock_qty - b.stock_qty);
+  else if (sort === 'name_asc') list = list.sort((a, b) => a.name.localeCompare(b.name, 'th'));
+
+  state.equipment = list;
+  renderEquipmentGrid();
+}
+
+const statusLabel = { available: ['green', 'พร้อมใช้งาน'], reserved: ['yellow', 'จองแล้ว / รอตรวจสอบ'], unavailable: ['red', 'ไม่พร้อมใช้งาน'] };
+
+function renderEquipmentGrid() {
+  const grid = document.getElementById('equipmentGrid');
+  grid.innerHTML = '';
+  if (!state.equipment.length) {
+    grid.innerHTML = '<div class="empty-hint">ไม่พบอุปกรณ์ที่ค้นหา</div>';
+    return;
+  }
+  for (const item of state.equipment) {
+    const [dotClass, label] = statusLabel[item.status] || statusLabel.available;
+    const qty = state.cart[item.id] || 0;
+
+    const card = document.createElement('div');
+    card.className = 'eq-card';
+    card.innerHTML = `
+      <div class="eq-thumb">${item.category_icon || '📦'}</div>
+      <div class="eq-body">
+        <div class="eq-name">${item.name}</div>
+        <div class="eq-code">รหัส: ${item.code}</div>
+        <div class="eq-stock">คงเหลือ: ${item.stock_qty} ชิ้น</div>
+        <div class="eq-status"><span class="status-dot ${dotClass}"></span>${label}</div>
+        <div class="qty-row">
+          <button class="qty-minus">−</button>
+          <input type="text" class="qty-val" value="${qty}" readonly />
+          <button class="qty-plus">+</button>
+          <button class="cart-add" title="เพิ่มลงตะกร้า">🛒</button>
+        </div>
+      </div>
+    `;
+    const qtyInput = card.querySelector('.qty-val');
+    card.querySelector('.qty-minus').addEventListener('click', () => {
+      const v = Math.max(0, Number(qtyInput.value) - 1);
+      qtyInput.value = v;
+    });
+    card.querySelector('.qty-plus').addEventListener('click', () => {
+      const v = Math.min(item.stock_qty, Number(qtyInput.value) + 1);
+      qtyInput.value = v;
+    });
+    card.querySelector('.cart-add').addEventListener('click', () => {
+      const v = Number(qtyInput.value);
+      if (v > 0) {
+        state.cart[item.id] = v;
+      } else {
+        delete state.cart[item.id];
+      }
+      renderCart();
+    });
+    grid.appendChild(card);
+  }
+}
+
+function renderCart() {
+  const list = document.getElementById('cartList');
+  const ids = Object.keys(state.cart);
+  document.getElementById('cartCount').textContent = ids.length;
+  document.getElementById('sideCartBadge').textContent = ids.length;
+  document.getElementById('cartItemCount').textContent = `${ids.length} รายการ`;
+  const totalQty = Object.values(state.cart).reduce((a, b) => a + b, 0);
+  document.getElementById('cartTotalQty').textContent = `${totalQty} ชิ้น`;
+
+  if (!ids.length) {
+    list.innerHTML = '<div class="empty-hint">ยังไม่มีอุปกรณ์ที่เลือก</div>';
+    return;
+  }
+  list.innerHTML = '';
+  for (const id of ids) {
+    const item = state.equipment.find((e) => String(e.id) === String(id));
+    const row = document.createElement('div');
+    row.className = 'cart-item';
+    row.innerHTML = `<span>${item ? item.name : `#${id}`}</span><span>${state.cart[id]} ชิ้น</span>`;
+    list.appendChild(row);
+  }
+}
+
+async function submitBooking() {
+  const ids = Object.keys(state.cart);
+  if (!ids.length) {
+    alert('กรุณาเลือกอุปกรณ์อย่างน้อย 1 รายการ');
+    return;
+  }
+  if (!state.activeEventId) {
+    alert('กรุณาสร้าง หรือเลือก "รายการออกบูธ" ที่กำลังเตรียมงานก่อน (ปุ่ม + สร้างรายการออกบูธใหม่ ที่แถบด้านซ้าย)');
+    return;
+  }
+  const items = ids.map((id) => ({ equipment_id: Number(id), qty: state.cart[id] }));
+  await api('/api/bookings', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: state.activeEventId, created_by: 'Tanatorn Y.', items }),
+  });
+  state.cart = {};
+  renderCart();
+  await loadEquipment();
+  alert('สร้างรายการจองเรียบร้อยแล้ว ✅ ดูได้ที่แท็บ "การจองอุปกรณ์"');
+}
+
+// ========================================================================
+// TAB: หมวดค่าใช้จ่าย (ฟีเจอร์ใหม่ที่เพิ่มให้)
+// ========================================================================
+async function loadExpenseCategories() {
+  state.expenseCategories = await api('/api/expense-categories');
+  const formSelect = document.getElementById('expenseFormCategory');
+  formSelect.innerHTML = state.expenseCategories
+    .map((c) => `<option value="${c.id}">${c.icon || '💰'} ${c.name}</option>`)
+    .join('');
+}
+
+async function loadEventOptions() {
+  state.events = await api('/api/events'); // เรียงจากใหม่สุดไปเก่าสุด (ดู server.js: ORDER BY id DESC)
+  const evFilter = document.getElementById('expenseEventFilter');
+  const evForm = document.getElementById('expenseFormEvent');
+  const opts = state.events.map((e) => `<option value="${e.id}">${e.name}</option>`).join('');
+  evFilter.innerHTML = '<option value="">ทุกงานออกบูธ</option>' + opts;
+  evForm.innerHTML = '<option value="">— ไม่ระบุ —</option>' + opts;
+
+  // ถ้ายังไม่เคยเลือกงานออกบูธที่ใช้งานอยู่ (หรืองานที่เคยเลือกถูกลบไปแล้ว) ให้ใช้งานล่าสุดเป็นค่าเริ่มต้น
+  const stillExists = state.events.some((e) => e.id === state.activeEventId);
+  if (!stillExists) {
+    state.activeEventId = state.events[0] ? state.events[0].id : null;
+  }
+  renderActiveEventBox();
+}
+
+function renderActiveEventBox() {
+  const nameEl = document.getElementById('eventName');
+  const metaEl = document.getElementById('eventMeta');
+  const active = state.events.find((e) => e.id === state.activeEventId);
+  if (!active) {
+    nameEl.textContent = 'ยังไม่มีรายการออกบูธ';
+    metaEl.textContent = 'กด "+ สร้างรายการออกบูธใหม่" ที่แถบด้านซ้ายเพื่อเริ่มต้น';
+    return;
+  }
+  nameEl.textContent = active.name;
+  const dateRange = [active.start_date, active.end_date].filter(Boolean).join(' – ');
+  metaEl.textContent = [dateRange, active.location].filter(Boolean).join(' • ') || 'ยังไม่ระบุวันที่/สถานที่';
+}
+
+async function loadExpensesTab() {
+  await Promise.all([loadExpenseCategories(), loadEventOptions()]);
+  await renderExpenseSummary();
+  await renderExpenseTable();
+}
+
+async function renderExpenseSummary() {
+  const eventId = document.getElementById('expenseEventFilter').value;
+  const params = eventId ? `?event_id=${eventId}` : '';
+  const { byCategory, grandTotal } = await api(`/api/expenses/summary${params}`);
+
+  const wrap = document.getElementById('expenseSummaryCards');
+  wrap.innerHTML = byCategory
+    .map(
+      (c) => `
+      <div class="exp-card">
+        <div class="exp-icon">${c.category_icon || '💰'}</div>
+        <div class="exp-name">${c.category_name}</div>
+        <div class="exp-amount">฿${money(c.total)}</div>
+      </div>`
+    )
+    .join('');
+
+  document.getElementById('expenseGrandTotal').textContent = money(grandTotal);
+  document.getElementById('expenseTotalBig').textContent = `฿${money(grandTotal)}`;
+
+  const breakdown = document.getElementById('expenseCatBreakdown');
+  breakdown.innerHTML = byCategory
+    .filter((c) => c.total > 0)
+    .map(
+      (c) => `<div class="side-row"><span>${c.category_icon || ''} ${c.category_name}</span><span>฿${money(c.total)}</span></div>`
+    )
+    .join('');
+}
+
+async function renderExpenseTable() {
+  const eventId = document.getElementById('expenseEventFilter').value;
+  const params = eventId ? `?event_id=${eventId}` : '';
+  const rows = await api(`/api/expenses${params}`);
+  const tbody = document.getElementById('expenseTableBody');
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:20px;">ยังไม่มีรายการค่าใช้จ่าย</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows
+    .map(
+      (r) => `
+      <tr>
+        <td>${r.expense_date}</td>
+        <td>${r.category_icon || ''} ${r.category_name}</td>
+        <td>${r.description || '-'}</td>
+        <td>${r.event_name || '-'}</td>
+        <td>${r.equipment_name || '-'}</td>
+        <td class="right">฿${money(r.amount)}</td>
+        <td><button class="row-del" data-id="${r.id}">ลบ</button></td>
+      </tr>`
+    )
+    .join('');
+
+  tbody.querySelectorAll('.row-del').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('ลบรายการนี้หรือไม่?')) return;
+      await api(`/api/expenses/${btn.dataset.id}`, { method: 'DELETE' });
+      await renderExpenseSummary();
+      await renderExpenseTable();
+    });
+  });
+}
+
+function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+function initExpenseModals() {
+  document.getElementById('btnAddExpense').addEventListener('click', () => {
+    document.getElementById('expenseFormDate').value = new Date().toISOString().slice(0, 10);
+    openModal('expenseModal');
+  });
+  document.getElementById('btnCancelExpense').addEventListener('click', () => closeModal('expenseModal'));
+  document.getElementById('btnSaveExpense').addEventListener('click', async () => {
+    const category_id = Number(document.getElementById('expenseFormCategory').value);
+    const event_id = document.getElementById('expenseFormEvent').value || null;
+    const description = document.getElementById('expenseFormDesc').value.trim();
+    const amount = Number(document.getElementById('expenseFormAmount').value);
+    const expense_date = document.getElementById('expenseFormDate').value;
+    if (!amount || amount <= 0) { alert('กรุณาระบุจำนวนเงินให้ถูกต้อง'); return; }
+    await api('/api/expenses', {
+      method: 'POST',
+      body: JSON.stringify({ category_id, event_id, description, amount, expense_date }),
+    });
+    closeModal('expenseModal');
+    document.getElementById('expenseFormDesc').value = '';
+    document.getElementById('expenseFormAmount').value = '';
+    await renderExpenseSummary();
+    await renderExpenseTable();
+  });
+
+  document.getElementById('btnAddExpenseCategory').addEventListener('click', () => openModal('categoryModal'));
+  document.getElementById('btnCancelCategory').addEventListener('click', () => closeModal('categoryModal'));
+  document.getElementById('btnSaveCategory').addEventListener('click', async () => {
+    const name = document.getElementById('categoryFormName').value.trim();
+    const icon = document.getElementById('categoryFormIcon').value.trim() || '💰';
+    if (!name) { alert('กรุณาระบุชื่อหมวดหมู่'); return; }
+    await api('/api/expense-categories', { method: 'POST', body: JSON.stringify({ name, icon }) });
+    closeModal('categoryModal');
+    document.getElementById('categoryFormName').value = '';
+    document.getElementById('categoryFormIcon').value = '';
+    await loadExpenseCategories();
+    await renderExpenseSummary();
+  });
+
+  document.getElementById('expenseEventFilter').addEventListener('change', async () => {
+    await renderExpenseSummary();
+    await renderExpenseTable();
+  });
+}
+
+// ========================================================================
+// TAB: การจองอุปกรณ์
+// ========================================================================
+async function loadBookingsTab() {
+  const rows = await api('/api/bookings');
+  const tbody = document.getElementById('bookingsTableBody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:20px;">ยังไม่มีการจอง</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows
+    .map(
+      (b) => `
+      <tr>
+        <td>#${b.id}</td>
+        <td>${b.event_name || '-'}</td>
+        <td>${b.status}</td>
+        <td>${b.items.map((i) => `${i.equipment_name} ×${i.qty}`).join(', ')}</td>
+        <td>${b.created_at}</td>
+      </tr>`
+    )
+    .join('');
+}
+
+// ========================================================================
+// TAB: หน้าหลัก
+// ========================================================================
+async function loadHomeTab() {
+  const [equipment, { grandTotal }, bookings] = await Promise.all([
+    api('/api/equipment'),
+    api('/api/expenses/summary'),
+    api('/api/bookings'),
+  ]);
+  const totalStock = equipment.reduce((s, e) => s + e.stock_qty, 0);
+  document.getElementById('statRow').innerHTML = `
+    <div class="stat-box"><div class="label">อุปกรณ์ทั้งหมด</div><div class="value">${equipment.length} รายการ</div></div>
+    <div class="stat-box"><div class="label">สต็อกรวม</div><div class="value">${totalStock} ชิ้น</div></div>
+    <div class="stat-box"><div class="label">การจองทั้งหมด</div><div class="value">${bookings.length} รายการ</div></div>
+    <div class="stat-box"><div class="label">ค่าใช้จ่ายรวม</div><div class="value">฿${money(grandTotal)}</div></div>
+  `;
+}
+
+// ========================================================================
+// TAB: รายการออกบูธของฉัน (สร้าง/เลือกงานออกบูธที่ใช้งานอยู่)
+// ========================================================================
+async function loadMyBoothsTab() {
+  state.events = await api('/api/events');
+  renderBoothGrid();
+}
+
+function renderBoothGrid() {
+  const grid = document.getElementById('boothGrid');
+  if (!state.events.length) {
+    grid.innerHTML = '<div class="empty-hint">ยังไม่มีรายการออกบูธ กด "+ สร้างรายการออกบูธใหม่" เพื่อเริ่มต้น</div>';
+    return;
+  }
+  grid.innerHTML = '';
+  for (const ev of state.events) {
+    const isActive = ev.id === state.activeEventId;
+    const dateRange = [ev.start_date, ev.end_date].filter(Boolean).join(' – ');
+    const card = document.createElement('div');
+    card.className = `booth-card${isActive ? ' active' : ''}`;
+    card.innerHTML = `
+      ${isActive ? '<span class="booth-active-badge">ใช้งานอยู่</span>' : ''}
+      <div class="booth-name">${ev.name}</div>
+      <div class="booth-meta">${[dateRange, ev.location].filter(Boolean).join(' • ') || 'ยังไม่ระบุวันที่/สถานที่'}</div>
+      ${isActive ? '' : '<button class="btn-outline choose-btn">เลือกใช้งาน</button>'}
+    `;
+    const chooseBtn = card.querySelector('.choose-btn');
+    if (chooseBtn) {
+      chooseBtn.addEventListener('click', () => {
+        state.activeEventId = ev.id;
+        renderActiveEventBox();
+        renderBoothGrid();
+      });
+    }
+    grid.appendChild(card);
+  }
+}
+
+function initBoothModal() {
+  const open = () => {
+    document.getElementById('boothFormName').value = '';
+    document.getElementById('boothFormLocation').value = '';
+    document.getElementById('boothFormStart').value = '';
+    document.getElementById('boothFormEnd').value = '';
+    openModal('boothModal');
+  };
+  document.getElementById('btnNewBooth').addEventListener('click', open);
+  document.getElementById('btnNewBoothInline').addEventListener('click', open);
+  document.getElementById('btnCancelBooth').addEventListener('click', () => closeModal('boothModal'));
+
+  document.getElementById('btnSaveBooth').addEventListener('click', async () => {
+    const name = document.getElementById('boothFormName').value.trim();
+    const location = document.getElementById('boothFormLocation').value.trim();
+    const start_date = document.getElementById('boothFormStart').value;
+    const end_date = document.getElementById('boothFormEnd').value;
+    if (!name) { alert('กรุณาระบุชื่องาน'); return; }
+
+    const { id } = await api('/api/events', {
+      method: 'POST',
+      body: JSON.stringify({ name, location, start_date, end_date }),
+    });
+    state.activeEventId = id; // งานที่เพิ่งสร้างกลายเป็นงานที่ใช้งานอยู่ทันที
+    closeModal('boothModal');
+
+    await loadEventOptions();
+    renderBoothGrid();
+    alert(`สร้างรายการออกบูธ "${name}" เรียบร้อยแล้ว ✅ ตอนนี้กำลังใช้งานอยู่`);
+  });
+}
+
+// ========================================================================
+// INIT
+// ========================================================================
+async function init() {
+  initTabs();
+  initExpenseModals();
+  initBoothModal();
+
+  document.getElementById('searchBox').addEventListener('input', debounce(loadEquipment, 300));
+  document.getElementById('statusFilter').addEventListener('change', loadEquipment);
+  document.getElementById('sortFilter').addEventListener('change', loadEquipment);
+  document.getElementById('btnCheckout').addEventListener('click', submitBooking);
+
+  await loadCategories();
+  await loadEventOptions();
+  await loadEquipment();
+  renderCart();
+}
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
+}
+
+init();

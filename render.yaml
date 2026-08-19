@@ -1,0 +1,32 @@
+# render.yaml — Render "Blueprint"
+# -----------------------------------------------------------------------
+# ไฟล์นี้อธิบายโครงสร้างระบบให้ Render สร้างให้อัตโนมัติในคลิกเดียว:
+#   1) Web Service ตัวนี้ (รัน server.js)
+#   2) ฐานข้อมูล PostgreSQL แยกต่างหาก แล้วส่ง DATABASE_URL เข้ามาให้เว็บเซอร์วิส
+#      อัตโนมัติ (ไม่ต้องตั้งค่าเอง)
+#
+# วิธีใช้ (ถ้า deploy เองผ่านเว็บ Render โดยไม่ผ่าน Claude):
+#   1. Push โปรเจกต์นี้ขึ้น GitHub (หรือ GitLab)
+#   2. เข้า https://dashboard.render.com/ → New → Blueprint → เลือก repo นี้
+#   3. Render จะอ่านไฟล์นี้แล้วสร้าง Web Service + Postgres ให้เอง
+# -----------------------------------------------------------------------
+services:
+  - type: web
+    name: baandee-inventory
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: baandee-inventory-db
+          property: connectionString
+      - key: NODE_VERSION
+        value: 20.11.0
+
+databases:
+  - name: baandee-inventory-db
+    plan: free
+    databaseName: baandee_inventory
+    user: baandee

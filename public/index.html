@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>บ้านดี | ระบบคลังอุปกรณ์ออกบูธ</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app">
+  <!-- ===================== Sidebar ===================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">🏠</div>
+      <div>
+        <div class="brand-name">บ้านดี</div>
+        <div class="brand-sub">รับสร้างบ้าน</div>
+      </div>
+    </div>
+
+    <button class="btn-new-booth" id="btnNewBooth">+ สร้างรายการออกบูธใหม่</button>
+
+    <nav class="nav">
+      <a href="#" class="nav-item" data-tab="home">🏠 หน้าหลัก</a>
+      <a href="#" class="nav-item" data-tab="mybooths">📋 รายการออกบูธของฉัน</a>
+      <a href="#" class="nav-item active" data-tab="equipment">🗂️ อุปกรณ์ทั้งหมด</a>
+      <a href="#" class="nav-item" data-tab="warehouse">📦 คลังอุปกรณ์</a>
+      <a href="#" class="nav-item" data-tab="bookings">✅ การจองอุปกรณ์</a>
+      <a href="#" class="nav-item" data-tab="expenses">💰 หมวดค่าใช้จ่าย</a>
+      <a href="#" class="nav-item" data-tab="history">🕒 ประวัติการใช้งาน</a>
+      <a href="#" class="nav-item" data-tab="reports">📊 รายงาน</a>
+      <a href="#" class="nav-item" data-tab="settings">⚙️ ตั้งค่า</a>
+    </nav>
+  </aside>
+
+  <!-- ===================== Main content ===================== -->
+  <main class="main">
+    <header class="topbar">
+      <input class="search" id="searchBox" placeholder="ค้นหาอุปกรณ์ เช่น เคาน์เตอร์, โต๊ะ, Roll up, ไฟสปอตไลท์..." />
+      <div class="topbar-right">
+        <span class="icon-btn">🔔</span>
+        <span class="icon-btn">🛒 <span id="cartCount">0</span></span>
+        <div class="user-chip">
+          <div class="avatar">T</div>
+          <div>
+            <div class="user-name">Tanatorn Y.</div>
+            <div class="user-role">Marketing</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ---------- Tab: อุปกรณ์ทั้งหมด ---------- -->
+    <section class="tab-panel" id="tab-equipment">
+      <div class="content-grid">
+        <div class="content-main">
+          <h1>เลือกอุปกรณ์ออกบูธ</h1>
+          <p class="subtitle">เลือกอุปกรณ์จากคลังของบริษัทเพื่อจัดเตรียมงานออกบูธ</p>
+
+          <div class="filter-row" id="categoryFilters">
+            <button class="chip active" data-cat="">🔲 ทั้งหมด</button>
+          </div>
+
+          <div class="filter-row secondary">
+            <select id="statusFilter">
+              <option value="">◎ สถานะ: ทั้งหมด</option>
+              <option value="available">🟢 พร้อมใช้งาน</option>
+              <option value="reserved">🟡 จองแล้ว / รอตรวจสอบ</option>
+              <option value="unavailable">🔴 ไม่พร้อมใช้งาน</option>
+            </select>
+            <select id="sortFilter">
+              <option value="stock_desc">เรียงตาม: สต็อกสูงสุด</option>
+              <option value="stock_asc">เรียงตาม: สต็อกต่ำสุด</option>
+              <option value="name_asc">เรียงตาม: ชื่อ ก-ฮ</option>
+            </select>
+          </div>
+
+          <div class="equipment-grid" id="equipmentGrid">
+            <!-- การ์ดอุปกรณ์ถูกสร้างด้วย JS -->
+          </div>
+        </div>
+
+        <aside class="content-side">
+          <div class="side-card">
+            <div class="side-card-header">
+              <span>รายการอุปกรณ์ที่เลือก</span>
+              <span class="badge" id="sideCartBadge">0</span>
+            </div>
+
+            <div class="event-box">
+              <div class="event-name" id="eventName">งานบ้านและสวนแฟร์ 2024</div>
+              <div class="event-meta" id="eventMeta">20–28 ก.ค. 2567 • ไบเทค บางนา</div>
+            </div>
+
+            <div class="cart-list" id="cartList">
+              <div class="empty-hint">ยังไม่มีอุปกรณ์ที่เลือก</div>
+            </div>
+
+            <div class="side-row"><span>จำนวนรายการ</span><span id="cartItemCount">0 รายการ</span></div>
+            <div class="side-row"><span>รวมอุปกรณ์</span><span id="cartTotalQty">0 ชิ้น</span></div>
+
+            <button class="btn-primary" id="btnCheckout">ถัดไป: ตรวจสอบการจอง →</button>
+
+            <div class="side-row"><span>สถานะการจอง</span><span class="status-dot green">พร้อมจอง</span></div>
+
+            <div class="legend">
+              <div class="legend-title">สถานะอุปกรณ์</div>
+              <div><span class="status-dot green"></span> พร้อมใช้งาน</div>
+              <div><span class="status-dot yellow"></span> จองแล้ว / รอตรวจสอบ</div>
+              <div><span class="status-dot red"></span> ไม่พร้อมใช้งาน</div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ---------- Tab: หมวดค่าใช้จ่าย (ใหม่) ---------- -->
+    <section class="tab-panel hidden" id="tab-expenses">
+      <div class="content-grid">
+        <div class="content-main">
+          <h1>หมวดค่าใช้จ่าย</h1>
+          <p class="subtitle">บันทึกและติดตามค่าใช้จ่ายของแต่ละงานออกบูธ แยกตามหมวดหมู่</p>
+
+          <div class="filter-row">
+            <select id="expenseEventFilter">
+              <option value="">ทุกงานออกบูธ</option>
+            </select>
+            <button class="btn-outline" id="btnAddExpenseCategory">+ เพิ่มหมวดหมู่</button>
+            <button class="btn-primary sm" id="btnAddExpense">+ บันทึกค่าใช้จ่าย</button>
+          </div>
+
+          <div class="expense-summary-cards" id="expenseSummaryCards">
+            <!-- สรุปยอดต่อหมวด สร้างด้วย JS -->
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table" id="expenseTable">
+              <thead>
+                <tr>
+                  <th>วันที่</th>
+                  <th>หมวดหมู่</th>
+                  <th>รายละเอียด</th>
+                  <th>งานออกบูธ</th>
+                  <th>อุปกรณ์</th>
+                  <th class="right">จำนวนเงิน</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="expenseTableBody"></tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="5" class="right"><strong>รวมทั้งหมด</strong></td>
+                  <td class="right"><strong id="expenseGrandTotal">0.00</strong></td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <aside class="content-side">
+          <div class="side-card">
+            <div class="side-card-header"><span>สรุปงบประมาณ</span></div>
+            <div class="event-box">
+              <div class="event-name">ยอดรวมค่าใช้จ่าย</div>
+              <div class="event-meta" id="expenseTotalBig">฿0.00</div>
+            </div>
+            <div id="expenseCatBreakdown"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ---------- Tab: การจองอุปกรณ์ ---------- -->
+    <section class="tab-panel hidden" id="tab-bookings">
+      <div class="content-main full">
+        <h1>การจองอุปกรณ์</h1>
+        <p class="subtitle">รายการจองอุปกรณ์ทั้งหมดที่สร้างไว้</p>
+        <div class="table-wrap">
+          <table class="data-table" id="bookingsTable">
+            <thead>
+              <tr><th>#</th><th>งานออกบูธ</th><th>สถานะ</th><th>รายการอุปกรณ์</th><th>สร้างเมื่อ</th></tr>
+            </thead>
+            <tbody id="bookingsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- Tab: หน้าหลัก ---------- -->
+    <section class="tab-panel hidden" id="tab-home">
+      <div class="content-main full">
+        <h1>ภาพรวมระบบ</h1>
+        <p class="subtitle">สรุปสต็อกอุปกรณ์และค่าใช้จ่ายล่าสุด</p>
+        <div class="stat-row" id="statRow"></div>
+      </div>
+    </section>
+
+    <!-- ---------- Tab: รายการออกบูธของฉัน ---------- -->
+    <section class="tab-panel hidden" id="tab-mybooths">
+      <div class="content-main full">
+        <div class="row-between">
+          <div>
+            <h1>รายการออกบูธของฉัน</h1>
+            <p class="subtitle">งานออกบูธทั้งหมดที่สร้างไว้ — เลือก "ใช้งานอยู่" เพื่อกำหนดว่ากำลังเตรียมงานไหนอยู่</p>
+          </div>
+          <button class="btn-primary sm" id="btnNewBoothInline">+ สร้างรายการออกบูธใหม่</button>
+        </div>
+        <div class="booth-grid" id="boothGrid"></div>
+      </div>
+    </section>
+    <section class="tab-panel hidden" id="tab-warehouse">
+      <div class="content-main full"><h1>คลังอุปกรณ์</h1><p class="subtitle">เร็วๆ นี้ — ใช้ /api/equipment ตัวเดียวกับแท็บอุปกรณ์ทั้งหมด</p></div>
+    </section>
+    <section class="tab-panel hidden" id="tab-history">
+      <div class="content-main full"><h1>ประวัติการใช้งาน</h1><p class="subtitle">เร็วๆ นี้</p></div>
+    </section>
+    <section class="tab-panel hidden" id="tab-reports">
+      <div class="content-main full"><h1>รายงาน</h1><p class="subtitle">เร็วๆ นี้</p></div>
+    </section>
+    <section class="tab-panel hidden" id="tab-settings">
+      <div class="content-main full"><h1>ตั้งค่า</h1><p class="subtitle">เร็วๆ นี้</p></div>
+    </section>
+  </main>
+</div>
+
+<!-- ---------- Modal: บันทึกค่าใช้จ่าย ---------- -->
+<div class="modal hidden" id="expenseModal">
+  <div class="modal-box">
+    <h3>บันทึกค่าใช้จ่าย</h3>
+    <label>หมวดหมู่</label>
+    <select id="expenseFormCategory"></select>
+    <label>งานออกบูธ (ถ้ามี)</label>
+    <select id="expenseFormEvent"><option value="">— ไม่ระบุ —</option></select>
+    <label>รายละเอียด</label>
+    <input type="text" id="expenseFormDesc" placeholder="เช่น ค่ารถขนของ" />
+    <label>จำนวนเงิน (บาท)</label>
+    <input type="number" id="expenseFormAmount" min="0" step="0.01" />
+    <label>วันที่</label>
+    <input type="date" id="expenseFormDate" />
+    <div class="modal-actions">
+      <button class="btn-outline" id="btnCancelExpense">ยกเลิก</button>
+      <button class="btn-primary" id="btnSaveExpense">บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- ---------- Modal: เพิ่มหมวดค่าใช้จ่าย ---------- -->
+<div class="modal hidden" id="categoryModal">
+  <div class="modal-box">
+    <h3>เพิ่มหมวดค่าใช้จ่าย</h3>
+    <label>ชื่อหมวดหมู่</label>
+    <input type="text" id="categoryFormName" placeholder="เช่น ค่าโฆษณา" />
+    <label>ไอคอน (emoji)</label>
+    <input type="text" id="categoryFormIcon" placeholder="💰" />
+    <div class="modal-actions">
+      <button class="btn-outline" id="btnCancelCategory">ยกเลิก</button>
+      <button class="btn-primary" id="btnSaveCategory">บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- ---------- Modal: สร้างรายการออกบูธใหม่ ---------- -->
+<div class="modal hidden" id="boothModal">
+  <div class="modal-box">
+    <h3>สร้างรายการออกบูธใหม่</h3>
+    <label>ชื่องาน *</label>
+    <input type="text" id="boothFormName" placeholder="เช่น งานบ้านและสวนแฟร์ 2025" />
+    <label>สถานที่</label>
+    <input type="text" id="boothFormLocation" placeholder="เช่น ไบเทค บางนา" />
+    <label>วันที่เริ่ม</label>
+    <input type="date" id="boothFormStart" />
+    <label>วันที่สิ้นสุด</label>
+    <input type="date" id="boothFormEnd" />
+    <div class="modal-actions">
+      <button class="btn-outline" id="btnCancelBooth">ยกเลิก</button>
+      <button class="btn-primary" id="btnSaveBooth">สร้างรายการ</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
