@@ -226,6 +226,9 @@ h1 { font-size: 24px; margin: 0 0 4px; }
   position: absolute; top: 14px; right: 14px; background: var(--yellow); color: var(--dark);
   font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px;
 }
+.booth-actions { display: flex; gap: 8px; }
+.booth-del-btn { color: var(--red); }
+.booth-del-btn:hover { background: #fdeceb; border-color: var(--red); }
 
 /* ================= Stat row (home tab) ================= */
 .stat-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
