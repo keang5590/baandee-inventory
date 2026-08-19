@@ -103,18 +103,27 @@ app.get('/api/equipment', wrap(async (req, res) => {
   res.json(rows);
 }));
 
-app.post('/api/equipment', wrap(async (req, res) => {
+app.post('/api/equipment', async (req, res) => {
   const { code, name, category_id, stock_qty, status, image_url } = req.body;
   if (!code || !name) return res.status(400).json({ error: 'ต้องระบุ code และ name' });
-  const { rows } = await pool.query(
-    `INSERT INTO equipment (code, name, category_id, stock_qty, status, image_url)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-    [code, name, category_id || null, stock_qty || 0, status || 'available', image_url || null]
-  );
-  res.status(201).json({ id: rows[0].id });
-}));
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO equipment (code, name, category_id, stock_qty, status, image_url)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [code, name, category_id || null, stock_qty || 0, status || 'available', image_url || null]
+    );
+    res.status(201).json({ id: rows[0].id });
+  } catch (err) {
+    // 23505 = unique_violation — รหัสอุปกรณ์ (code) ซ้ำกับที่มีอยู่แล้ว
+    if (err.code === '23505') {
+      return res.status(400).json({ error: `รหัสอุปกรณ์ "${code}" ถูกใช้ไปแล้ว กรุณาตั้งรหัสอื่น` });
+    }
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
-app.patch('/api/equipment/:id', wrap(async (req, res) => {
+app.patch('/api/equipment/:id', async (req, res) => {
   const fields = ['code', 'name', 'category_id', 'stock_qty', 'status', 'image_url'];
   const updates = [];
   const params = [];
@@ -126,14 +135,32 @@ app.patch('/api/equipment/:id', wrap(async (req, res) => {
   }
   if (!updates.length) return res.status(400).json({ error: 'ไม่มีข้อมูลให้แก้ไข' });
   params.push(req.params.id);
-  await pool.query(`UPDATE equipment SET ${updates.join(', ')} WHERE id = $${params.length}`, params);
-  res.json({ ok: true });
-}));
+  try {
+    await pool.query(`UPDATE equipment SET ${updates.join(', ')} WHERE id = $${params.length}`, params);
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(400).json({ error: `รหัสอุปกรณ์ "${req.body.code}" ถูกใช้ไปแล้ว กรุณาตั้งรหัสอื่น` });
+    }
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
-app.delete('/api/equipment/:id', wrap(async (req, res) => {
-  await pool.query('DELETE FROM equipment WHERE id = $1', [req.params.id]);
-  res.json({ ok: true });
-}));
+app.delete('/api/equipment/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM equipment WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    // 23503 = foreign_key_violation — อุปกรณ์นี้ถูกอ้างอิงอยู่ในรายการจอง (booking_items) หรือค่าใช้จ่าย (expenses) อยู่
+    // ตอบกลับเป็นข้อความที่เข้าใจง่ายแทนข้อความ error ดิบของ Postgres
+    if (err.code === '23503') {
+      return res.status(400).json({ error: 'ลบไม่ได้ เพราะอุปกรณ์นี้ถูกใช้อยู่ในรายการจองหรือค่าใช้จ่ายที่มีอยู่แล้ว' });
+    }
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // อัปโหลดรูปอุปกรณ์ — รับไฟล์ผ่าน multipart/form-data ชื่อฟิลด์ 'image'
 // แล้วบันทึก path ('/uploads/xxx.jpg') ลงคอลัมน์ image_url ของอุปกรณ์ชิ้นนั้น
