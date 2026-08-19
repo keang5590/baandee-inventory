@@ -449,7 +449,7 @@ async function loadBookingsTab() {
       <tr>
         <td>#${b.id}</td>
         <td>${b.event_name || '-'}</td>
-        <td>${bookingStatusLabel[b.status] || b.status}</td>
+        <td>${renderBookingStatusBadge(b.status)}</td>
         <td>${b.items.map((i) => `${i.equipment_name} ×${i.qty}`).join(', ')}</td>
         <td>${b.created_by || '-'}</td>
         <td>${b.created_at}</td>
@@ -474,7 +474,16 @@ async function loadBookingsTab() {
   });
 }
 
-const bookingStatusLabel = { pending: 'รอตรวจสอบ', confirmed: 'ยืนยันแล้ว', cancelled: 'ยกเลิกแล้ว' };
+// สถานะใบจอง: ป้ายสี (badge) แยกตามสถานะให้เห็นชัดตาต่อสถานะ — pending สีส้ม,
+// confirmed สีเขียว, cancelled สีแดง
+const bookingStatusLabel = { pending: 'รอการยืนยัน', confirmed: 'ยืนยันการจอง', cancelled: 'ยกเลิกการจอง' };
+const bookingStatusColor = { pending: 'orange', confirmed: 'green', cancelled: 'red' };
+
+function renderBookingStatusBadge(status) {
+  const label = bookingStatusLabel[status] || status;
+  const color = bookingStatusColor[status] || 'orange';
+  return `<span class="booking-status-badge ${color}">${label}</span>`;
+}
 
 async function confirmBooking(id) {
   try {
