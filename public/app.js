@@ -456,18 +456,38 @@ async function loadBookingsTab() {
         <td>${
           b.status === 'cancelled'
             ? '<span class="created-by">ยกเลิกไปแล้ว</span>'
-            : `<button class="btn-outline sm booking-cancel-btn" data-id="${b.id}">ยกเลิกใบจอง</button>`
+            : `${
+                b.status === 'pending'
+                  ? `<button class="booking-confirm-btn" data-id="${b.id}">ยืนยันการจอง</button>`
+                  : ''
+              }<button class="btn-outline sm booking-cancel-btn" data-id="${b.id}">ยกเลิกใบจอง</button>`
         }</td>
       </tr>`
     )
     .join('');
 
+  tbody.querySelectorAll('.booking-confirm-btn').forEach((btn) => {
+    btn.addEventListener('click', () => confirmBooking(Number(btn.dataset.id)));
+  });
   tbody.querySelectorAll('.booking-cancel-btn').forEach((btn) => {
     btn.addEventListener('click', () => cancelBooking(Number(btn.dataset.id)));
   });
 }
 
 const bookingStatusLabel = { pending: 'รอตรวจสอบ', confirmed: 'ยืนยันแล้ว', cancelled: 'ยกเลิกแล้ว' };
+
+async function confirmBooking(id) {
+  try {
+    await api(`/api/bookings/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'confirmed' }),
+    });
+  } catch (err) {
+    alert(err.message);
+    return;
+  }
+  await loadBookingsTab();
+}
 
 async function cancelBooking(id) {
   if (!confirm(`ยกเลิกใบจอง #${id} หรือไม่?\nอุปกรณ์ในใบจองนี้จะถูกคืนสต็อกกลับให้อัตโนมัติ`)) return;
