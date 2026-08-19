@@ -335,11 +335,13 @@ app.delete('/api/events/:id', wrap(async (req, res) => {
       return res.status(404).json({ error: 'ไม่พบรายการออกบูธนี้' });
     }
 
-    const { rows: equipIds } = await client.query(
-      `SELECT DISTINCT bi.equipment_id
+    // เอาเฉพาะรายการจองที่ "ยังไม่ถูกยกเลิก" มาคืนสต็อก — ใบจองที่ยกเลิกไปแล้วก่อนหน้านี้
+    // คืนสต็อกไปแล้วตอนกดยกเลิก ถ้านับซ้ำตรงนี้อีกสต็อกจะเพี้ยน (เกินจำนวนจริง)
+    const { rows: itemsToRestore } = await client.query(
+      `SELECT bi.equipment_id, bi.qty
        FROM booking_items bi
        JOIN bookings b ON b.id = bi.booking_id
-       WHERE b.event_id = $1`,
+       WHERE b.event_id = $1 AND b.status != 'cancelled'`,
       [eventId]
     );
 
@@ -350,10 +352,22 @@ app.delete('/api/events/:id', wrap(async (req, res) => {
     await client.query('DELETE FROM bookings WHERE event_id = $1', [eventId]);
     await client.query('DELETE FROM expenses WHERE event_id = $1', [eventId]);
 
-    if (equipIds.length) {
+    // รวมจำนวนที่ต้องคืนต่ออุปกรณ์ 1 ชิ้น (เผื่อกรณีมีหลายใบจองในงานนี้จองอุปกรณ์ชิ้นเดียวกัน)
+    const restoreMap = {};
+    for (const r of itemsToRestore) {
+      restoreMap[r.equipment_id] = (restoreMap[r.equipment_id] || 0) + r.qty;
+    }
+    for (const [equipmentId, qty] of Object.entries(restoreMap)) {
       await client.query(
-        `UPDATE equipment SET status = 'available' WHERE id = ANY($1::int[]) AND status = 'reserved'`,
-        [equipIds.map((r) => r.equipment_id)]
+        `UPDATE equipment
+         SET stock_qty = stock_qty + $1,
+             status = CASE
+               WHEN status = 'unavailable' THEN status
+               WHEN stock_qty + $1 > 0 THEN 'available'
+               ELSE 'reserved'
+             END
+         WHERE id = $2`,
+        [qty, equipmentId]
       );
     }
 
@@ -396,6 +410,32 @@ app.post('/api/bookings', wrap(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // ตรวจสต็อกจริงของทุกชิ้นก่อนสร้างใบจอง — ล็อกแถว (FOR UPDATE) ไว้จนกว่า
+    // transaction นี้จะจบ กันกรณีจองพร้อมกันหลายคนแล้วสต็อกติดลบ (race condition)
+    // ถ้าชิ้นไหนของไม่พอ หรือถูกตั้งเป็น "ไม่พร้อมใช้งาน" ไว้ ยกเลิกทั้งใบจองทันที
+    for (const item of items) {
+      const qty = item.qty || 1;
+      const { rows: eq } = await client.query(
+        'SELECT name, stock_qty, status FROM equipment WHERE id = $1 FOR UPDATE',
+        [item.equipment_id]
+      );
+      if (!eq.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'ไม่พบอุปกรณ์ที่เลือกไว้ในรายการ' });
+      }
+      if (eq[0].status === 'unavailable') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `"${eq[0].name}" ไม่พร้อมใช้งานในขณะนี้ จองไม่ได้` });
+      }
+      if (eq[0].stock_qty < qty) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: `"${eq[0].name}" เหลือไม่พอ (คงเหลือ ${eq[0].stock_qty} ชิ้น แต่พยายามจอง ${qty} ชิ้น)`,
+        });
+      }
+    }
+
     // created_by ดึงจากผู้ใช้ที่ล็อกอินอยู่จริงเสมอ (ไม่รับค่าจาก client) เหมือนกับ /api/events
     const { rows } = await client.query(
       `INSERT INTO bookings (event_id, created_by, status) VALUES ($1, $2, 'pending') RETURNING id`,
@@ -404,13 +444,19 @@ app.post('/api/bookings', wrap(async (req, res) => {
     const bookingId = rows[0].id;
 
     for (const item of items) {
+      const qty = item.qty || 1;
       await client.query(
         `INSERT INTO booking_items (booking_id, equipment_id, qty) VALUES ($1, $2, $3)`,
-        [bookingId, item.equipment_id, item.qty || 1]
+        [bookingId, item.equipment_id, qty]
       );
+      // ตัดสต็อกจริง — ถ้าตัดแล้วเหลือ 0 พอดี เปลี่ยนสถานะเป็น "จองแล้ว" ให้อัตโนมัติ
+      // (ผ่านการเช็คไปแล้วด้านบนว่าไม่ใช่ 'unavailable' จึงตั้งเป็น 'available'/'reserved' ได้เลย)
       await client.query(
-        `UPDATE equipment SET status = 'reserved' WHERE id = $1 AND stock_qty <= $2`,
-        [item.equipment_id, item.qty || 1]
+        `UPDATE equipment
+         SET stock_qty = stock_qty - $1,
+             status = CASE WHEN stock_qty - $1 <= 0 THEN 'reserved' ELSE 'available' END
+         WHERE id = $2`,
+        [qty, item.equipment_id]
       );
     }
     await client.query('COMMIT');
@@ -428,8 +474,52 @@ app.patch('/api/bookings/:id', wrap(async (req, res) => {
   if (!['pending', 'confirmed', 'cancelled'].includes(status)) {
     return res.status(400).json({ error: 'สถานะไม่ถูกต้อง' });
   }
-  await pool.query('UPDATE bookings SET status = $1 WHERE id = $2', [status, req.params.id]);
-  res.json({ ok: true });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: existing } = await client.query(
+      'SELECT status FROM bookings WHERE id = $1 FOR UPDATE',
+      [req.params.id]
+    );
+    if (!existing.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'ไม่พบใบจองนี้' });
+    }
+
+    // คืนสต็อกให้อุปกรณ์ทุกชิ้นในใบจองนี้ตอนเปลี่ยนเป็น "ยกเลิก" เท่านั้น และทำแค่
+    // ครั้งเดียว (เช็คว่าก่อนหน้านี้ยังไม่ได้ถูกยกเลิกไว้อยู่แล้ว) กันคืนสต็อกซ้ำซ้อน
+    if (status === 'cancelled' && existing[0].status !== 'cancelled') {
+      const { rows: items } = await client.query(
+        'SELECT equipment_id, qty FROM booking_items WHERE booking_id = $1',
+        [req.params.id]
+      );
+      for (const item of items) {
+        // ไม่แตะสถานะ 'unavailable' (เป็น flag ที่พนักงานตั้งเองว่าอุปกรณ์ชำรุด/ใช้ไม่ได้
+        // ไม่เกี่ยวกับจำนวนสต็อก) ส่วนกรณีอื่นคำนวณสถานะใหม่จากจำนวนคงเหลือหลังคืนสต็อก
+        await client.query(
+          `UPDATE equipment
+           SET stock_qty = stock_qty + $1,
+               status = CASE
+                 WHEN status = 'unavailable' THEN status
+                 WHEN stock_qty + $1 > 0 THEN 'available'
+                 ELSE 'reserved'
+               END
+           WHERE id = $2`,
+          [item.qty, item.equipment_id]
+        );
+      }
+    }
+
+    await client.query('UPDATE bookings SET status = $1 WHERE id = $2', [status, req.params.id]);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }));
 
 // ========================= EXPENSE CATEGORIES (หมวดค่าใช้จ่าย) =========================
