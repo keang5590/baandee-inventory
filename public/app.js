@@ -48,8 +48,30 @@ function initTabs() {
       if (tab === 'home') loadHomeTab();
       if (tab === 'mybooths') loadMyBoothsTab();
       if (tab === 'warehouse') loadWarehouseTab();
+
+      closeSidebarDrawer(); // มือถือ: เลือกแท็บแล้วปิดเมนูด้านข้างให้อัตโนมัติ (ไม่มีผลอะไรบนจอเดสก์ท็อป)
     });
   });
+}
+
+// ========================================================================
+// เมนูด้านข้างบนมือถือ/แท็บเล็ต (hamburger drawer)
+// บนจอกว้าง (เดสก์ท็อป) sidebar แสดงตลอดเวลาอยู่แล้วตาม CSS ปกติ ฟังก์ชันพวกนี้
+// มีผลจริงๆ แค่ตอนจอแคบ (ดู media query ใน style.css) — เรียกใช้ได้อย่างปลอดภัย
+// ทุกขนาดจอเพราะแค่ toggle class เฉยๆ ไม่กระทบ layout บนเดสก์ท็อป
+// ========================================================================
+function openSidebarDrawer() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebarOverlay').classList.add('show');
+}
+function closeSidebarDrawer() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('show');
+}
+function initSidebarDrawer() {
+  document.getElementById('btnHamburger').addEventListener('click', openSidebarDrawer);
+  document.getElementById('btnCloseSidebar').addEventListener('click', closeSidebarDrawer);
+  document.getElementById('sidebarOverlay').addEventListener('click', closeSidebarDrawer);
 }
 
 // ========================================================================
@@ -504,6 +526,7 @@ function initBoothModal() {
     document.getElementById('boothFormLocation').value = '';
     document.getElementById('boothFormStart').value = '';
     document.getElementById('boothFormEnd').value = '';
+    closeSidebarDrawer(); // ถ้ากดจากเมนูมือถือที่เปิดอยู่ ให้ปิดเมนูไปด้วยตอนเปิด modal
     openModal('boothModal');
   };
   document.getElementById('btnNewBooth').addEventListener('click', open);
@@ -653,6 +676,7 @@ async function init() {
   initExpenseModals();
   initBoothModal();
   initEquipmentModal();
+  initSidebarDrawer();
 
   document.getElementById('searchBox').addEventListener('input', debounce(loadEquipment, 300));
   document.getElementById('statusFilter').addEventListener('change', loadEquipment);
