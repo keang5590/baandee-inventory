@@ -13,6 +13,7 @@ const state = {
   expenseCategories: [],
   cart: {}, // { equipment_id: qty }
   activeEventId: null, // งานออกบูธที่กำลังเตรียมอยู่ตอนนี้
+  currentUser: null, // ผู้ใช้ที่ล็อกอินอยู่ตอนนี้ { id, username, display_name }
 };
 
 // ---------- helper: เรียก API ----------
@@ -21,6 +22,11 @@ async function api(path, options = {}) {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
+  if (res.status === 401) {
+    // token หมดอายุ/ไม่ได้ล็อกอิน ระหว่างใช้งานอยู่ — เด้งกลับไปหน้า login ทันที
+    window.location.href = '/login.html';
+    throw new Error('กรุณาเข้าสู่ระบบ');
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'เกิดข้อผิดพลาด' }));
     throw new Error(err.error || 'เกิดข้อผิดพลาด');
@@ -252,7 +258,8 @@ async function submitBooking() {
   const items = ids.map((id) => ({ equipment_id: Number(id), qty: state.cart[id] }));
   await api('/api/bookings', {
     method: 'POST',
-    body: JSON.stringify({ event_id: state.activeEventId, created_by: 'Tanatorn Y.', items }),
+    // created_by ไม่ต้องส่งจากฝั่งนี้แล้ว — เซิร์ฟเวอร์ดึงชื่อจากผู้ใช้ที่ล็อกอินอยู่ให้เองอัตโนมัติ
+    body: JSON.stringify({ event_id: state.activeEventId, items }),
   });
   state.cart = {};
   renderCart();
@@ -426,7 +433,7 @@ async function loadBookingsTab() {
   const rows = await api('/api/bookings');
   const tbody = document.getElementById('bookingsTableBody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;padding:20px;">ยังไม่มีการจอง</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px;">ยังไม่มีการจอง</td></tr>';
     return;
   }
   tbody.innerHTML = rows
@@ -437,6 +444,7 @@ async function loadBookingsTab() {
         <td>${b.event_name || '-'}</td>
         <td>${b.status}</td>
         <td>${b.items.map((i) => `${i.equipment_name} ×${i.qty}`).join(', ')}</td>
+        <td>${b.created_by || '-'}</td>
         <td>${b.created_at}</td>
       </tr>`
     )
@@ -485,6 +493,7 @@ function renderBoothGrid() {
       ${isActive ? '<span class="booth-active-badge">ใช้งานอยู่</span>' : ''}
       <div class="booth-name">${ev.name}</div>
       <div class="booth-meta">${[dateRange, ev.location].filter(Boolean).join(' • ') || 'ยังไม่ระบุวันที่/สถานที่'}</div>
+      <div class="created-by">สร้างโดย: ${ev.created_by || '-'}</div>
       <div class="booth-actions">
         ${isActive ? '' : '<button class="btn-outline choose-btn">เลือกใช้งาน</button>'}
         <button class="btn-outline booth-del-btn" title="ลบรายการออกบูธนี้">🗑️ ลบ</button>
@@ -671,7 +680,25 @@ function initEquipmentModal() {
 // ========================================================================
 // INIT
 // ========================================================================
+async function loadCurrentUser() {
+  state.currentUser = await api('/api/me'); // ถ้ายังไม่ล็อกอิน api() จะเด้งไป /login.html ให้เองอัตโนมัติ
+  document.getElementById('userName').textContent = state.currentUser.display_name;
+  document.getElementById('userAvatar').textContent = state.currentUser.display_name.trim().charAt(0).toUpperCase();
+}
+
+function initLogout() {
+  document.getElementById('btnLogout').addEventListener('click', async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } finally {
+      window.location.href = '/login.html';
+    }
+  });
+}
+
 async function init() {
+  await loadCurrentUser();
+  initLogout();
   initTabs();
   initExpenseModals();
   initBoothModal();
