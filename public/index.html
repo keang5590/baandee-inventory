@@ -210,8 +210,33 @@
         <div class="booth-grid" id="boothGrid"></div>
       </div>
     </section>
+    <!-- ---------- Tab: คลังอุปกรณ์ (จัดการสต็อก — เพิ่ม/แก้ไข/ลบอุปกรณ์) ---------- -->
     <section class="tab-panel hidden" id="tab-warehouse">
-      <div class="content-main full"><h1>คลังอุปกรณ์</h1><p class="subtitle">เร็วๆ นี้ — ใช้ /api/equipment ตัวเดียวกับแท็บอุปกรณ์ทั้งหมด</p></div>
+      <div class="content-main full">
+        <div class="row-between">
+          <div>
+            <h1>คลังอุปกรณ์</h1>
+            <p class="subtitle">จัดการรายการอุปกรณ์ของบูธการตลาด — ข้อมูลชุดเดียวกับแท็บ "อุปกรณ์ทั้งหมด" (ใช้ /api/equipment ร่วมกัน)</p>
+          </div>
+          <button class="btn-primary sm" id="btnNewEquipmentInline">+ เพิ่มอุปกรณ์ใหม่</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="warehouseTable">
+            <thead>
+              <tr>
+                <th></th>
+                <th>รหัส</th>
+                <th>ชื่ออุปกรณ์</th>
+                <th>หมวดหมู่</th>
+                <th class="right">สต็อก</th>
+                <th>สถานะ</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="warehouseTableBody"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
     <section class="tab-panel hidden" id="tab-history">
       <div class="content-main full"><h1>ประวัติการใช้งาน</h1><p class="subtitle">เร็วๆ นี้</p></div>
@@ -257,6 +282,31 @@
     <div class="modal-actions">
       <button class="btn-outline" id="btnCancelCategory">ยกเลิก</button>
       <button class="btn-primary" id="btnSaveCategory">บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- ---------- Modal: เพิ่ม/แก้ไขอุปกรณ์ (คลังอุปกรณ์) ---------- -->
+<div class="modal hidden" id="equipmentModal">
+  <div class="modal-box">
+    <h3 id="equipmentModalTitle">เพิ่มอุปกรณ์ใหม่</h3>
+    <label>รหัสอุปกรณ์ *</label>
+    <input type="text" id="equipmentFormCode" placeholder="เช่น CT-006" />
+    <label>ชื่ออุปกรณ์ *</label>
+    <input type="text" id="equipmentFormName" placeholder="เช่น เคาน์เตอร์ทรงกลม" />
+    <label>หมวดหมู่</label>
+    <select id="equipmentFormCategory"><option value="">— ไม่ระบุ —</option></select>
+    <label>จำนวนสต็อก</label>
+    <input type="number" id="equipmentFormStock" min="0" step="1" value="0" />
+    <label>สถานะ</label>
+    <select id="equipmentFormStatus">
+      <option value="available">🟢 พร้อมใช้งาน</option>
+      <option value="reserved">🟡 จองแล้ว / รอตรวจสอบ</option>
+      <option value="unavailable">🔴 ไม่พร้อมใช้งาน</option>
+    </select>
+    <div class="modal-actions">
+      <button class="btn-outline" id="btnCancelEquipment">ยกเลิก</button>
+      <button class="btn-primary" id="btnSaveEquipment">บันทึก</button>
     </div>
   </div>
 </div>
