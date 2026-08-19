@@ -243,6 +243,12 @@ h1 { font-size: 24px; margin: 0 0 4px; }
 }
 .btn-outline:hover { background: #fafafa; border-color: #d5d6da; }
 .btn-outline.sm { padding: 6px 12px; border-radius: 8px; font-size: 12px; margin-right: 6px; }
+.booking-confirm-btn {
+  background: var(--yellow); border: none; padding: 6px 12px; border-radius: 8px;
+  font-weight: 600; font-size: 12px; margin-right: 6px; cursor: pointer;
+  transition: background var(--ease);
+}
+.booking-confirm-btn:hover { background: var(--yellow-dark); }
 .legend { margin-top: 14px; font-size: 12px; color: #555; }
 .legend-title { font-weight: 700; margin-bottom: 6px; color: #333; }
 .legend div { display: flex; align-items: center; margin-bottom: 4px; }
