@@ -9,8 +9,12 @@
 <body>
 
 <div class="app">
+  <!-- มือถือ/แท็บเล็ต: ฉากหลังมืดเวลาเปิดเมนูด้านข้าง กดเพื่อปิดเมนูได้ -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
   <!-- ===================== Sidebar ===================== -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
+    <button class="sidebar-close-btn" id="btnCloseSidebar" aria-label="ปิดเมนู">✕</button>
     <div class="brand">
       <div class="brand-logo">🏠</div>
       <div>
@@ -37,6 +41,7 @@
   <!-- ===================== Main content ===================== -->
   <main class="main">
     <header class="topbar">
+      <button class="hamburger-btn" id="btnHamburger" aria-label="เปิดเมนู">☰</button>
       <input class="search" id="searchBox" placeholder="ค้นหาอุปกรณ์ เช่น เคาน์เตอร์, โต๊ะ, Roll up, ไฟสปอตไลท์..." />
       <div class="topbar-right">
         <span class="icon-btn">🔔</span>
