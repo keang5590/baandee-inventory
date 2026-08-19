@@ -110,10 +110,18 @@ function renderEquipmentGrid() {
     const [dotClass, label] = statusLabel[item.status] || statusLabel.available;
     const qty = state.cart[item.id] || 0;
 
+    const thumbInner = item.image_url
+      ? `<img src="${item.image_url}" alt="${item.name}" />`
+      : (item.category_icon || '📦');
+
     const card = document.createElement('div');
     card.className = 'eq-card';
     card.innerHTML = `
-      <div class="eq-thumb">${item.category_icon || '📦'}</div>
+      <div class="eq-thumb">
+        ${thumbInner}
+        <button class="eq-photo-btn" type="button" title="อัปโหลดรูปอุปกรณ์">📷</button>
+        <input type="file" class="eq-photo-input" accept="image/*" hidden />
+      </div>
       <div class="eq-body">
         <div class="eq-name">${item.name}</div>
         <div class="eq-code">รหัส: ${item.code}</div>
@@ -145,7 +153,43 @@ function renderEquipmentGrid() {
       }
       renderCart();
     });
+
+    // อัปโหลดรูปอุปกรณ์: กดปุ่มกล้อง -> เปิด file picker -> เลือกไฟล์แล้วอัปโหลดทันที
+    const photoInput = card.querySelector('.eq-photo-input');
+    card.querySelector('.eq-photo-btn').addEventListener('click', () => photoInput.click());
+    photoInput.addEventListener('change', () => uploadEquipmentPhoto(item.id, photoInput, card));
+
     grid.appendChild(card);
+  }
+}
+
+async function uploadEquipmentPhoto(equipmentId, inputEl, cardEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+
+  const thumb = cardEl.querySelector('.eq-thumb');
+  const originalContent = thumb.innerHTML;
+  thumb.innerHTML = '<span class="eq-photo-loading">กำลังอัปโหลด...</span>';
+
+  try {
+    const formData = new FormData();
+    formData.append('image', file);
+    // หมายเหตุ: ที่นี่ไม่ใส่ header 'Content-Type' เอง — เบราว์เซอร์จะตั้งให้อัตโนมัติ
+    // พร้อม boundary ที่ถูกต้องของ multipart/form-data ถ้าตั้งเองมักจะพังเพราะ boundary หาย
+    const res = await fetch(`/api/equipment/${equipmentId}/image`, { method: 'POST', body: formData });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'อัปโหลดไม่สำเร็จ' }));
+      throw new Error(err.error || 'อัปโหลดไม่สำเร็จ');
+    }
+    const { image_url } = await res.json();
+
+    // อัปเดตข้อมูลในหน่วยความจำ แล้ววาดการ์ดใหม่ทั้งกริดให้ตรงกับฐานข้อมูล
+    const item = state.equipment.find((e) => e.id === equipmentId);
+    if (item) item.image_url = image_url;
+    renderEquipmentGrid();
+  } catch (err) {
+    alert(err.message);
+    thumb.innerHTML = originalContent;
   }
 }
 
