@@ -16,11 +16,7 @@
   <aside class="sidebar" id="sidebar">
     <button class="sidebar-close-btn" id="btnCloseSidebar" aria-label="ปิดเมนู">✕</button>
     <div class="brand">
-      <div class="brand-logo">🏠</div>
-      <div>
-        <div class="brand-name">บ้านดี</div>
-        <div class="brand-sub">รับสร้างบ้าน</div>
-      </div>
+      <img src="img/logo.png" alt="บ้านดี | รับสร้างบ้าน" class="sidebar-logo-img" />
     </div>
 
     <button class="btn-new-booth" id="btnNewBooth">+ สร้างรายการออกบูธใหม่</button>
@@ -386,8 +382,13 @@
 <!-- ---------- Modal: ดูรายการจองของงานออกบูธ (พร้อมปริ้น) ---------- -->
 <div class="modal hidden" id="bookingDetailModal">
   <div class="modal-box wide" id="bookingDetailPrintArea">
-    <h3 id="bdEventName">รายการจอง</h3>
-    <p class="account-hint" id="bdEventMeta"></p>
+    <div class="print-letterhead">
+      <img src="img/logo.png" alt="บ้านดี | รับสร้างบ้าน" class="print-logo" />
+      <div>
+        <h3 id="bdEventName">รายการจอง</h3>
+        <p class="account-hint" id="bdEventMeta"></p>
+      </div>
+    </div>
 
     <div class="table-wrap">
       <table class="data-table" id="bdConfirmedTable">
