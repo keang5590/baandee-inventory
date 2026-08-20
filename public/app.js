@@ -55,6 +55,7 @@ function initTabs() {
       if (tab === 'mybooths') loadMyBoothsTab();
       if (tab === 'warehouse') loadWarehouseTab();
       if (tab === 'settings') loadSettingsForm();
+      if (tab === 'history') loadHistoryTab(true);
 
       closeSidebarDrawer(); // มือถือ: เลือกแท็บแล้วปิดเมนูด้านข้างให้อัตโนมัติ (ไม่มีผลอะไรบนจอเดสก์ท็อป)
     });
@@ -939,6 +940,110 @@ function initEquipmentModal() {
 }
 
 // ========================================================================
+// TAB: ประวัติการใช้งาน
+// ========================================================================
+// ใช้ไอคอนเดียวกับเมนูด้านข้างของแต่ละหมวด ให้ผู้ใช้จำได้ทันทีว่ารายการนี้เกี่ยวกับอะไร
+const HISTORY_ICON = { equipment: '🗂️', event: '🏠', booking: '✅', expense: '💰', account: '⚙️' };
+const HISTORY_COLOR = { equipment: 'indigo', event: 'yellow', booking: 'green', expense: 'orange', account: 'gray' };
+
+const historyState = {
+  category: 'all',
+  lastId: null, // cursor สำหรับ "โหลดเพิ่ม" — ส่ง id ล่าสุดที่โหลดไปแล้วให้ backend
+  hasMore: false,
+  items: [], // สะสมรายการทั้งหมดที่โหลดมาแล้วของหมวดปัจจุบัน (ไว้จัดกลุ่มตามวันใหม่ทุกครั้ง)
+};
+
+function historyDateLabel(dateStr) {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const startOf = (dt) => new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  const diffDays = Math.round((startOf(now) - startOf(d)) / 86400000);
+  if (diffDays === 0) return 'วันนี้';
+  if (diffDays === 1) return 'เมื่อวาน';
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function historyTimeLabel(dateStr) {
+  return new Date(dateStr).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderHistoryTimeline() {
+  const container = document.getElementById('historyTimeline');
+  const emptyMsg = document.getElementById('historyEmpty');
+  if (!historyState.items.length) {
+    container.innerHTML = '';
+    emptyMsg.classList.remove('hidden');
+    return;
+  }
+  emptyMsg.classList.add('hidden');
+
+  // จัดกลุ่มเป็นก้อนตามวัน (label) โดยคงลำดับใหม่สุด→เก่าสุดตามที่ backend ส่งมา
+  const groups = [];
+  let currentLabel = null;
+  for (const item of historyState.items) {
+    const label = historyDateLabel(item.created_at);
+    if (label !== currentLabel) {
+      groups.push({ label, items: [] });
+      currentLabel = label;
+    }
+    groups[groups.length - 1].items.push(item);
+  }
+
+  container.innerHTML = groups
+    .map(
+      (g) => `
+      <div class="history-day-group">
+        <p class="history-day-heading">${g.label}</p>
+        ${g.items
+          .map(
+            (item) => `
+          <div class="history-item">
+            <span class="history-item-icon ${HISTORY_COLOR[item.category] || 'gray'}">${HISTORY_ICON[item.category] || '•'}</span>
+            <div class="history-item-body">
+              <p class="history-item-summary">${item.summary}</p>
+              <p class="history-item-meta">${item.actor || 'ระบบ'} • ${historyTimeLabel(item.created_at)}</p>
+            </div>
+          </div>`
+          )
+          .join('')}
+      </div>`
+    )
+    .join('');
+}
+
+async function loadHistoryTab(reset = true) {
+  if (reset) {
+    historyState.lastId = null;
+    historyState.items = [];
+  }
+  const params = new URLSearchParams();
+  if (historyState.category !== 'all') params.set('category', historyState.category);
+  if (historyState.lastId) params.set('before', historyState.lastId);
+  params.set('limit', 50);
+
+  const { items, hasMore } = await api(`/api/activity-log?${params.toString()}`);
+  historyState.items.push(...items);
+  historyState.hasMore = hasMore;
+  if (items.length) historyState.lastId = items[items.length - 1].id;
+
+  renderHistoryTimeline();
+  document.getElementById('btnHistoryLoadMore').classList.toggle('hidden', !hasMore);
+}
+
+function initHistoryFilters() {
+  document.querySelectorAll('.history-filter-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      if (chip.classList.contains('active')) return;
+      document.querySelectorAll('.history-filter-chip').forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      historyState.category = chip.dataset.category;
+      loadHistoryTab(true);
+    });
+  });
+  document.getElementById('btnHistoryLoadMore').addEventListener('click', () => loadHistoryTab(false));
+}
+
+// ========================================================================
 // INIT
 // ========================================================================
 async function loadCurrentUser() {
@@ -1019,6 +1124,7 @@ async function init() {
   initBookingDetailModal();
   initEquipmentModal();
   initSidebarDrawer();
+  initHistoryFilters();
 
   document.getElementById('searchBox').addEventListener('input', debounce(loadEquipment, 300));
   document.getElementById('statusFilter').addEventListener('change', loadEquipment);
