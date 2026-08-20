@@ -70,6 +70,13 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 }
 .brand-name { font-weight: 700; font-size: 16px; }
 .brand-sub { font-size: 11px; color: var(--muted); }
+.sidebar-logo-img { width: 100%; max-width: 170px; border-radius: 12px; display: block; }
+
+/* ---- หัวกระดาษโลโก้บริษัท (โชว์ทั้งบนจอในโมดัลและตอนปริ้นใบรายการจอง) ---- */
+.print-letterhead { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+.print-logo { width: 56px; height: 56px; border-radius: 8px; flex-shrink: 0; }
+.modal-box .print-letterhead h3 { margin: 0; }
+.print-letterhead .account-hint { margin: 2px 0 0; }
 
 .btn-new-booth {
   background: var(--yellow); color: var(--dark); border: none;
