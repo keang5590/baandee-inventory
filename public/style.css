@@ -380,6 +380,19 @@ h1 { font-size: 24px; margin: 0 0 4px; }
 #bdPendingSection.hidden { display: none; }
 .bd-pending-title { margin-top: 18px; }
 
+.bd-signature-section {
+  display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 24px 48px;
+  margin-top: 36px; padding-top: 4px;
+}
+.bd-signature-box { text-align: center; }
+.bd-signature-line {
+  width: min(220px, 55vw); border-bottom: 1px solid var(--dark);
+}
+.bd-signature-date .bd-signature-line { width: min(140px, 40vw); }
+.bd-signature-label {
+  margin: 6px 0 0; font-size: 13px; color: var(--muted);
+}
+
 /* ปริ้นเฉพาะเนื้อหาในโมดัลดูรายการจอง (ตารางอุปกรณ์ที่ยืนยันแล้ว) — ซ่อนทุกอย่างอื่น
    บนหน้าเว็บ รวมถึงส่วน "รอการยืนยัน" และปุ่มต่างๆ ในโมดัลเอง (คลาส .no-print) */
 @media print {
