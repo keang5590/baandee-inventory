@@ -106,6 +106,18 @@ async function initDb() {
       expense_date   DATE NOT NULL DEFAULT CURRENT_DATE,
       created_at     TIMESTAMPTZ DEFAULT now()
     );
+
+    -- ประวัติการใช้งาน: บันทึกอัตโนมัติทุกครั้งที่มีคนทำรายการสำคัญในระบบ (เพิ่ม/แก้ไข/ลบ
+    -- อุปกรณ์, งานออกบูธ, การจอง, ค่าใช้จ่าย, บัญชี) — summary เก็บเป็นข้อความไทยที่
+    -- ปรุงไว้เสร็จแล้วตอนบันทึก (ไม่ต้อง join ย้อนหลังตอนแสดงผล ง่ายและเร็วกว่า)
+    CREATE TABLE IF NOT EXISTS activity_log (
+      id          SERIAL PRIMARY KEY,
+      category    TEXT NOT NULL,
+      summary     TEXT NOT NULL,
+      actor       TEXT,
+      created_at  TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_activity_log_created_at ON activity_log (id DESC);
   `);
 
   // -----------------------------------------------------------------------
