@@ -284,6 +284,59 @@ async function loadExpenseCategories() {
   formSelect.innerHTML = state.expenseCategories
     .map((c) => `<option value="${c.id}">${c.icon || '💰'} ${c.name}</option>`)
     .join('');
+  updateWageCalcVisibility();
+}
+
+// ---------- คำนวณค่าแรงจากปฏิทิน (เฉพาะหมวดหมู่ "ค่าแรงพนักงาน") ----------
+// จับคู่ด้วยชื่อหมวดหมู่ตรงตัว เพราะหมวดหมู่ค่าใช้จ่ายเป็นข้อมูลที่ผู้ใช้สร้าง/แก้เองได้
+// ถ้าวันหลังมีคนเปลี่ยนชื่อหมวดนี้ ตัวคำนวณจะไม่โผล่มาอัตโนมัติอีก (ต้องตั้งชื่อกลับให้ตรงเดิม)
+const WAGE_CATEGORY_NAME = 'ค่าแรงพนักงาน';
+
+function isWageCategorySelected() {
+  const id = Number(document.getElementById('expenseFormCategory').value);
+  const cat = state.expenseCategories.find((c) => c.id === id);
+  return !!cat && cat.name === WAGE_CATEGORY_NAME;
+}
+
+function updateWageCalcVisibility() {
+  const show = isWageCategorySelected();
+  document.getElementById('expenseWageCalc').classList.toggle('hidden', !show);
+}
+
+function recalcWageAmount() {
+  const resultEl = document.getElementById('wageCalcResult');
+  const startVal = document.getElementById('wageStartDate').value;
+  const endVal = document.getElementById('wageEndDate').value;
+  const rate = Number(document.getElementById('wageDailyRate').value);
+
+  if (!startVal || !endVal || !rate || rate <= 0) {
+    resultEl.textContent = 'เลือกวันที่และค่าแรงต่อวันเพื่อคำนวณ';
+    return;
+  }
+
+  const start = new Date(startVal);
+  const end = new Date(endVal);
+  const days = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1; // นับรวมวันเริ่มและวันสิ้นสุด
+
+  if (days < 1) {
+    resultEl.textContent = '"วันที่สิ้นสุด" ต้องไม่ก่อน "วันที่เริ่มทำงาน"';
+    return;
+  }
+
+  const total = days * rate;
+  resultEl.textContent = `${days} วัน × ${money(rate)} บาท = ${money(total)} บาท`;
+  document.getElementById('expenseFormAmount').value = total;
+  document.getElementById('expenseFormDate').value = startVal; // ใช้วันที่เริ่มทำงานเป็นวันที่ของรายการนี้
+}
+
+function initWageCalc() {
+  document.getElementById('expenseFormCategory').addEventListener('change', () => {
+    updateWageCalcVisibility();
+    recalcWageAmount();
+  });
+  ['wageStartDate', 'wageEndDate', 'wageDailyRate'].forEach((id) => {
+    document.getElementById(id).addEventListener('input', recalcWageAmount);
+  });
 }
 
 async function loadEventOptions() {
@@ -464,9 +517,18 @@ async function renderExpenseTable() {
 function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 
+function resetWageCalcFields() {
+  document.getElementById('wageStartDate').value = '';
+  document.getElementById('wageEndDate').value = '';
+  document.getElementById('wageDailyRate').value = '';
+  document.getElementById('wageCalcResult').textContent = 'เลือกวันที่และค่าแรงต่อวันเพื่อคำนวณ';
+}
+
 function initExpenseModals() {
   document.getElementById('btnAddExpense').addEventListener('click', () => {
     document.getElementById('expenseFormDate').value = new Date().toISOString().slice(0, 10);
+    resetWageCalcFields();
+    updateWageCalcVisibility();
     openModal('expenseModal');
   });
   document.getElementById('btnCancelExpense').addEventListener('click', () => closeModal('expenseModal'));
@@ -484,6 +546,7 @@ function initExpenseModals() {
     closeModal('expenseModal');
     document.getElementById('expenseFormDesc').value = '';
     document.getElementById('expenseFormAmount').value = '';
+    resetWageCalcFields();
     await renderExpenseSummary();
     await renderExpenseTable();
   });
@@ -951,6 +1014,7 @@ async function init() {
   initSettingsForm();
   initTabs();
   initExpenseModals();
+  initWageCalc();
   initBoothModal();
   initBookingDetailModal();
   initEquipmentModal();
