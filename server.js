@@ -100,6 +100,20 @@ const wrap = (fn) => async (req, res) => {
   }
 };
 
+// บันทึกประวัติการใช้งาน (หน้า "ประวัติการใช้งาน") — เรียกหลังจากทำรายการสำคัญสำเร็จแล้ว
+// เท่านั้น (ไม่เรียกถ้า transaction หลักล้มเหลว) ตั้งใจไม่ throw ถ้าบันทึกประวัติเอง
+// ล้มเหลว เพราะไม่อยากให้การบันทึกประวัติ (ฟีเจอร์เสริม) ไปทำให้รายการหลักพังตามไปด้วย
+async function logActivity(category, summary, actor, client = pool) {
+  try {
+    await client.query(
+      'INSERT INTO activity_log (category, summary, actor) VALUES ($1, $2, $3)',
+      [category, summary, actor || null]
+    );
+  } catch (err) {
+    console.error('[activity_log] บันทึกประวัติไม่สำเร็จ:', err.message);
+  }
+}
+
 app.get('/api/health', wrap(async (req, res) => {
   await pool.query('SELECT 1');
   res.json({ ok: true });
@@ -203,6 +217,16 @@ app.patch('/api/account', wrap(async (req, res) => {
     throw err;
   }
 
+  // บันทึกประวัติเฉพาะสิ่งที่เปลี่ยนจริงๆ — ไม่บันทึกรหัสผ่านจริงๆ ลงประวัติ (ความปลอดภัย)
+  // แค่บอกว่า "เปลี่ยนรหัสผ่าน" เฉยๆ
+  const changes = [];
+  if (user.username !== uname) changes.push(`เปลี่ยนชื่อผู้ใช้เป็น "${uname}"`);
+  if (user.display_name !== dname) changes.push(`เปลี่ยนชื่อที่แสดงเป็น "${dname}"`);
+  if (new_password) changes.push('เปลี่ยนรหัสผ่าน');
+  if (changes.length) {
+    await logActivity('account', `แก้ไขข้อมูลบัญชี: ${changes.join(', ')}`, updated.display_name);
+  }
+
   // ออก token ใหม่ทันที เพราะ username/display_name ที่ฝังอยู่ใน token เปลี่ยนไปแล้ว
   // ผู้ใช้จะได้ไม่ต้องล็อกอินใหม่หลังกดบันทึก
   const token = signToken(updated);
@@ -262,6 +286,7 @@ app.post('/api/equipment', async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
       [code, name, category_id || null, stock_qty || 0, status || 'available', image_url || null]
     );
+    await logActivity('equipment', `เพิ่มอุปกรณ์ใหม่: ${name} (${code})`, req.user.display_name);
     res.status(201).json({ id: rows[0].id });
   } catch (err) {
     // 23505 = unique_violation — รหัสอุปกรณ์ (code) ซ้ำกับที่มีอยู่แล้ว
@@ -273,20 +298,31 @@ app.post('/api/equipment', async (req, res) => {
   }
 });
 
+const EQUIPMENT_STATUS_TH = { available: 'พร้อมใช้งาน', reserved: 'จองแล้ว', unavailable: 'ไม่พร้อมใช้งาน' };
+
 app.patch('/api/equipment/:id', async (req, res) => {
   const fields = ['code', 'name', 'category_id', 'stock_qty', 'status', 'image_url'];
+  const changedFields = fields.filter((f) => req.body[f] !== undefined);
   const updates = [];
   const params = [];
-  for (const f of fields) {
-    if (req.body[f] !== undefined) {
-      params.push(req.body[f]);
-      updates.push(`${f} = $${params.length}`);
-    }
+  for (const f of changedFields) {
+    params.push(req.body[f]);
+    updates.push(`${f} = $${params.length}`);
   }
   if (!updates.length) return res.status(400).json({ error: 'ไม่มีข้อมูลให้แก้ไข' });
   params.push(req.params.id);
   try {
-    await pool.query(`UPDATE equipment SET ${updates.join(', ')} WHERE id = $${params.length}`, params);
+    const { rows } = await pool.query(
+      `UPDATE equipment SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING code, name`,
+      params
+    );
+    if (rows[0]) {
+      // ถ้าแก้แค่ "สถานะ" อย่างเดียว บันทึกประวัติเป็นข้อความเฉพาะเรื่องสถานะ ให้เข้าใจง่ายกว่า
+      const msg = (changedFields.length === 1 && changedFields[0] === 'status')
+        ? `เปลี่ยนสถานะอุปกรณ์: ${rows[0].name} (${rows[0].code}) → ${EQUIPMENT_STATUS_TH[req.body.status] || req.body.status}`
+        : `แก้ไขข้อมูลอุปกรณ์: ${rows[0].name} (${rows[0].code})`;
+      await logActivity('equipment', msg, req.user.display_name);
+    }
     res.json({ ok: true });
   } catch (err) {
     if (err.code === '23505') {
@@ -299,7 +335,10 @@ app.patch('/api/equipment/:id', async (req, res) => {
 
 app.delete('/api/equipment/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM equipment WHERE id = $1', [req.params.id]);
+    const { rows } = await pool.query('DELETE FROM equipment WHERE id = $1 RETURNING code, name', [req.params.id]);
+    if (rows[0]) {
+      await logActivity('equipment', `ลบอุปกรณ์: ${rows[0].name} (${rows[0].code})`, req.user.display_name);
+    }
     res.json({ ok: true });
   } catch (err) {
     // 23503 = foreign_key_violation — อุปกรณ์นี้ถูกอ้างอิงอยู่ในรายการจอง (booking_items) หรือค่าใช้จ่าย (expenses) อยู่
@@ -380,6 +419,7 @@ app.post('/api/events', wrap(async (req, res) => {
     `INSERT INTO events (name, location, start_date, end_date, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
     [name, location || null, start_date || null, end_date || null, req.user.display_name]
   );
+  await logActivity('event', `สร้างงานออกบูธใหม่: ${name}`, req.user.display_name);
   res.status(201).json({ id: rows[0].id });
 }));
 
@@ -392,7 +432,7 @@ app.delete('/api/events/:id', wrap(async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const { rows: existing } = await client.query('SELECT id FROM events WHERE id = $1', [eventId]);
+    const { rows: existing } = await client.query('SELECT id, name FROM events WHERE id = $1', [eventId]);
     if (!existing.length) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'ไม่พบรายการออกบูธนี้' });
@@ -435,6 +475,7 @@ app.delete('/api/events/:id', wrap(async (req, res) => {
     }
 
     await client.query('DELETE FROM events WHERE id = $1', [eventId]);
+    await logActivity('event', `ลบงานออกบูธ: ${existing[0].name}`, req.user.display_name, client);
     await client.query('COMMIT');
     res.json({ ok: true });
   } catch (err) {
@@ -522,6 +563,15 @@ app.post('/api/bookings', wrap(async (req, res) => {
         [qty, item.equipment_id]
       );
     }
+
+    // หาชื่องานออกบูธมาใส่ในข้อความประวัติ ให้อ่านแล้วรู้เลยว่าใบจองนี้เป็นของงานไหน
+    let eventLabel = '';
+    if (event_id) {
+      const { rows: evRows } = await client.query('SELECT name FROM events WHERE id = $1', [event_id]);
+      if (evRows[0]) eventLabel = ` สำหรับงาน "${evRows[0].name}"`;
+    }
+    await logActivity('booking', `สร้างใบจองอุปกรณ์ใหม่${eventLabel} (${items.length} รายการ)`, req.user.display_name, client);
+
     await client.query('COMMIT');
     res.status(201).json({ id: bookingId });
   } catch (err) {
@@ -532,6 +582,8 @@ app.post('/api/bookings', wrap(async (req, res) => {
   }
 }));
 
+const BOOKING_STATUS_TH = { pending: 'รอดำเนินการ', confirmed: 'ยืนยันแล้ว', cancelled: 'ยกเลิกแล้ว' };
+
 app.patch('/api/bookings/:id', wrap(async (req, res) => {
   const { status } = req.body;
   if (!['pending', 'confirmed', 'cancelled'].includes(status)) {
@@ -541,8 +593,12 @@ app.patch('/api/bookings/:id', wrap(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // FOR UPDATE OF b — ล็อกเฉพาะแถวของตาราง bookings เท่านั้น เพราะ Postgres ไม่ยอมให้
+    // FOR UPDATE ทำงานกับฝั่งที่เป็น nullable ของ LEFT JOIN (ตาราง events อาจไม่มีแถวคู่)
     const { rows: existing } = await client.query(
-      'SELECT status FROM bookings WHERE id = $1 FOR UPDATE',
+      `SELECT b.status, ev.name AS event_name
+       FROM bookings b LEFT JOIN events ev ON ev.id = b.event_id
+       WHERE b.id = $1 FOR UPDATE OF b`,
       [req.params.id]
     );
     if (!existing.length) {
@@ -575,6 +631,15 @@ app.patch('/api/bookings/:id', wrap(async (req, res) => {
     }
 
     await client.query('UPDATE bookings SET status = $1 WHERE id = $2', [status, req.params.id]);
+
+    if (existing[0].status !== status) {
+      const eventLabel = existing[0].event_name ? ` (งาน "${existing[0].event_name}")` : '';
+      const verb = status === 'confirmed' ? 'ยืนยันใบจองอุปกรณ์'
+        : status === 'cancelled' ? 'ยกเลิกใบจองอุปกรณ์'
+        : `เปลี่ยนสถานะใบจองเป็น "${BOOKING_STATUS_TH[status]}"`;
+      await logActivity('booking', `${verb}${eventLabel}`, req.user.display_name, client);
+    }
+
     await client.query('COMMIT');
     res.json({ ok: true });
   } catch (err) {
@@ -634,11 +699,25 @@ app.post('/api/expenses', wrap(async (req, res) => {
      VALUES ($1, $2, $3, $4, $5, COALESCE($6, CURRENT_DATE)) RETURNING id`,
     [category_id, event_id || null, equipment_id || null, description || null, amount, expense_date || null]
   );
+  const { rows: catRows } = await pool.query('SELECT name FROM expense_categories WHERE id = $1', [category_id]);
+  const catName = catRows[0]?.name || 'ไม่ระบุหมวด';
+  const amountLabel = Number(amount).toLocaleString('th-TH');
+  await logActivity('expense', `เพิ่มค่าใช้จ่าย: ${catName} จำนวน ${amountLabel} บาท${description ? ' — ' + description : ''}`, req.user.display_name);
   res.status(201).json({ id: rows[0].id });
 }));
 
 app.delete('/api/expenses/:id', wrap(async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT x.amount, x.description, c.name AS category_name
+     FROM expenses x JOIN expense_categories c ON c.id = x.category_id
+     WHERE x.id = $1`,
+    [req.params.id]
+  );
   await pool.query('DELETE FROM expenses WHERE id = $1', [req.params.id]);
+  if (rows[0]) {
+    const amountLabel = Number(rows[0].amount).toLocaleString('th-TH');
+    await logActivity('expense', `ลบค่าใช้จ่าย: ${rows[0].category_name} จำนวน ${amountLabel} บาท`, req.user.display_name);
+  }
   res.json({ ok: true });
 }));
 
@@ -662,6 +741,31 @@ app.get('/api/expenses/summary', wrap(async (req, res) => {
   const { rows } = await pool.query(sql, params);
   const grandTotal = rows.reduce((sum, r) => sum + r.total, 0);
   res.json({ byCategory: rows, grandTotal });
+}));
+
+// ========================= ACTIVITY LOG (ประวัติการใช้งาน) =========================
+// แบ่งหน้าแบบ cursor (before=<id ล่าสุดที่โหลดไปแล้ว>) แทน offset/page เพราะข้อมูลใหม่
+// จะถูกเพิ่มเข้ามาเรื่อยๆ ระหว่างที่ผู้ใช้กำลังกด "โหลดเพิ่ม" — แบบ id ไม่มีปัญหารายการ
+// ซ้ำ/หายเวลาเลื่อนหน้า ต่างจาก offset ที่จะเพี้ยนถ้ามีรายการใหม่แทรกเข้ามาระหว่างนั้น
+app.get('/api/activity-log', wrap(async (req, res) => {
+  const { category, before } = req.query;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+
+  let sql = 'SELECT * FROM activity_log WHERE 1=1';
+  const params = [];
+  if (category && category !== 'all') {
+    params.push(category);
+    sql += ` AND category = $${params.length}`;
+  }
+  if (before) {
+    params.push(before);
+    sql += ` AND id < $${params.length}`;
+  }
+  params.push(limit);
+  sql += ` ORDER BY id DESC LIMIT $${params.length}`;
+
+  const { rows } = await pool.query(sql, params);
+  res.json({ items: rows, hasMore: rows.length === limit });
 }));
 
 async function main() {
