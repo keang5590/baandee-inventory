@@ -357,6 +357,18 @@ h1 { font-size: 24px; margin: 0 0 4px; }
 .modal-box input:focus, .modal-box select:focus { border-color: var(--yellow-dark); outline: none; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 
+/* ---- คำนวณค่าแรงจากปฏิทิน (เฉพาะหมวดค่าแรงพนักงานในฟอร์มบันทึกค่าใช้จ่าย) ---- */
+.wage-calc.hidden { display: none; }
+.wage-calc {
+  background: #fafafa; border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; margin: 4px 0 10px;
+}
+.wage-calc-title { margin: 0 0 4px; }
+.wage-calc-result {
+  margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--dark);
+  background: #fff; border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px;
+}
+
 /* ---- รายละเอียดการจอง (ดูรายการจองของงานออกบูธ + ปริ้น) ---- */
 #bdPendingSection.hidden { display: none; }
 .bd-pending-title { margin-top: 18px; }
