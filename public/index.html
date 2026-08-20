@@ -259,7 +259,34 @@
       <div class="content-main full"><h1>รายงาน</h1><p class="subtitle">เร็วๆ นี้</p></div>
     </section>
     <section class="tab-panel hidden" id="tab-settings">
-      <div class="content-main full"><h1>ตั้งค่า</h1><p class="subtitle">เร็วๆ นี้</p></div>
+      <div class="content-main full">
+        <h1>ตั้งค่า</h1>
+        <p class="subtitle">แก้ไขข้อมูลบัญชีของคุณ</p>
+
+        <div class="side-card account-card">
+          <form id="accountForm" class="account-form">
+            <label>ชื่อผู้ใช้ (username)</label>
+            <input type="text" id="accUsername" autocomplete="username" required />
+
+            <label>ชื่อที่แสดง</label>
+            <input type="text" id="accDisplayName" autocomplete="name" required />
+
+            <hr class="account-divider" />
+            <p class="account-hint">เปลี่ยนรหัสผ่าน (เว้นว่างไว้ทั้งหมดถ้าไม่ต้องการเปลี่ยน)</p>
+
+            <label>รหัสผ่านเดิม</label>
+            <input type="password" id="accCurrentPassword" autocomplete="current-password" />
+
+            <label>รหัสผ่านใหม่</label>
+            <input type="password" id="accNewPassword" autocomplete="new-password" />
+
+            <label>ยืนยันรหัสผ่านใหม่</label>
+            <input type="password" id="accNewPasswordConfirm" autocomplete="new-password" />
+
+            <button type="submit" class="btn-primary account-save-btn">บันทึกการเปลี่ยนแปลง</button>
+          </form>
+        </div>
+      </div>
     </section>
   </main>
 </div>
