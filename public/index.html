@@ -371,6 +371,40 @@
   </div>
 </div>
 
+<!-- ---------- Modal: ดูรายการจองของงานออกบูธ (พร้อมปริ้น) ---------- -->
+<div class="modal hidden" id="bookingDetailModal">
+  <div class="modal-box wide" id="bookingDetailPrintArea">
+    <h3 id="bdEventName">รายการจอง</h3>
+    <p class="account-hint" id="bdEventMeta"></p>
+
+    <div class="table-wrap">
+      <table class="data-table" id="bdConfirmedTable">
+        <thead>
+          <tr><th>อุปกรณ์</th><th>รหัส</th><th class="right">จำนวนรวม</th></tr>
+        </thead>
+        <tbody id="bdConfirmedBody"></tbody>
+      </table>
+    </div>
+
+    <div class="no-print" id="bdPendingSection">
+      <p class="account-hint bd-pending-title">ใบจองที่ยังรอการยืนยัน (ยังไม่นับรวมในรายการด้านบน)</p>
+      <div class="table-wrap">
+        <table class="data-table" id="bdPendingTable">
+          <thead>
+            <tr><th>#</th><th>อุปกรณ์</th><th>สร้างโดย</th></tr>
+          </thead>
+          <tbody id="bdPendingBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="modal-actions no-print">
+      <button class="btn-outline" id="btnCloseBookingDetail">ปิด</button>
+      <button class="btn-primary" id="btnPrintBookingDetail">🖶️ ปริ้น</button>
+    </div>
+  </div>
+</div>
+
 <script src="vendor/chart.umd.min.js"></script>
 <script src="app.js"></script>
 </body>
