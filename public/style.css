@@ -347,6 +347,7 @@ h1 { font-size: 24px; margin: 0 0 4px; }
   display: flex; flex-direction: column; gap: 6px;
   box-shadow: var(--shadow-lg);
 }
+.modal-box.wide { width: 640px; }
 .modal-box h3 { margin: 0 0 10px; }
 .modal-box label { font-size: 12px; color: #555; margin-top: 8px; }
 .modal-box input, .modal-box select {
@@ -355,6 +356,26 @@ h1 { font-size: 24px; margin: 0 0 4px; }
 }
 .modal-box input:focus, .modal-box select:focus { border-color: var(--yellow-dark); outline: none; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+/* ---- รายละเอียดการจอง (ดูรายการจองของงานออกบูธ + ปริ้น) ---- */
+#bdPendingSection.hidden { display: none; }
+.bd-pending-title { margin-top: 18px; }
+
+/* ปริ้นเฉพาะเนื้อหาในโมดัลดูรายการจอง (ตารางอุปกรณ์ที่ยืนยันแล้ว) — ซ่อนทุกอย่างอื่น
+   บนหน้าเว็บ รวมถึงส่วน "รอการยืนยัน" และปุ่มต่างๆ ในโมดัลเอง (คลาส .no-print) */
+@media print {
+  body * { visibility: hidden; }
+  #bookingDetailPrintArea, #bookingDetailPrintArea * { visibility: visible; }
+  #bookingDetailPrintArea .no-print { display: none !important; }
+  #bookingDetailModal {
+    position: absolute; inset: 0; background: none; padding: 0;
+    display: block;
+  }
+  #bookingDetailPrintArea {
+    position: absolute; top: 0; left: 0; width: 100%; max-width: 100%;
+    box-shadow: none; border-radius: 0; max-height: none; overflow: visible;
+  }
+}
 
 /* =========================================================================
    RESPONSIVE — จอแท็บเล็ต/แคบกว่า 1024px: content-side (ตะกร้า/สรุป) ที่เคย
