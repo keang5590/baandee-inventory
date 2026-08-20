@@ -54,6 +54,7 @@ function initTabs() {
       if (tab === 'home') loadHomeTab();
       if (tab === 'mybooths') loadMyBoothsTab();
       if (tab === 'warehouse') loadWarehouseTab();
+      if (tab === 'settings') loadSettingsForm();
 
       closeSidebarDrawer(); // มือถือ: เลือกแท็บแล้วปิดเมนูด้านข้างให้อัตโนมัติ (ไม่มีผลอะไรบนจอเดสก์ท็อป)
     });
@@ -833,9 +834,61 @@ function initLogout() {
   });
 }
 
+// ========================================================================
+// SETTINGS (แก้ไขบัญชีของตัวเอง)
+// ========================================================================
+function loadSettingsForm() {
+  document.getElementById('accUsername').value = state.currentUser.username;
+  document.getElementById('accDisplayName').value = state.currentUser.display_name;
+  document.getElementById('accCurrentPassword').value = '';
+  document.getElementById('accNewPassword').value = '';
+  document.getElementById('accNewPasswordConfirm').value = '';
+}
+
+function initSettingsForm() {
+  document.getElementById('accountForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const username = document.getElementById('accUsername').value.trim();
+    const display_name = document.getElementById('accDisplayName').value.trim();
+    const current_password = document.getElementById('accCurrentPassword').value;
+    const new_password = document.getElementById('accNewPassword').value;
+    const new_password_confirm = document.getElementById('accNewPasswordConfirm').value;
+
+    if (!username || !display_name) {
+      alert('กรุณากรอกชื่อผู้ใช้และชื่อที่แสดง');
+      return;
+    }
+    if (new_password && new_password !== new_password_confirm) {
+      alert('รหัสผ่านใหม่ที่กรอกทั้งสองช่องไม่ตรงกัน');
+      return;
+    }
+
+    try {
+      const res = await api('/api/account', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          username,
+          display_name,
+          current_password: current_password || undefined,
+          new_password: new_password || undefined,
+        }),
+      });
+      state.currentUser = res.user;
+      document.getElementById('userName').textContent = state.currentUser.display_name;
+      document.getElementById('userAvatar').textContent = state.currentUser.display_name.trim().charAt(0).toUpperCase();
+      loadSettingsForm(); // เคลียร์ช่องรหัสผ่านหลังบันทึกสำเร็จ
+      alert('บันทึกข้อมูลบัญชีเรียบร้อยแล้ว ✅');
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+}
+
 async function init() {
   await loadCurrentUser();
   initLogout();
+  initSettingsForm();
   initTabs();
   initExpenseModals();
   initBoothModal();
