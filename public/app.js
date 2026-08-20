@@ -634,9 +634,11 @@ function renderBoothGrid() {
       <div class="created-by">สร้างโดย: ${ev.created_by || '-'}</div>
       <div class="booth-actions">
         ${isActive ? '' : '<button class="btn-outline choose-btn">เลือกใช้งาน</button>'}
+        <button class="btn-outline booth-detail-btn">📋 ดูรายการจอง</button>
         <button class="btn-outline booth-del-btn" title="ลบรายการออกบูธนี้">🗑️ ลบ</button>
       </div>
     `;
+    card.querySelector('.booth-detail-btn').addEventListener('click', () => openBookingDetail(ev));
     const chooseBtn = card.querySelector('.choose-btn');
     if (chooseBtn) {
       chooseBtn.addEventListener('click', () => {
@@ -648,6 +650,64 @@ function renderBoothGrid() {
     card.querySelector('.booth-del-btn').addEventListener('click', () => deleteBooth(ev));
     grid.appendChild(card);
   }
+}
+
+// ---------- รายละเอียดการจองของงานออกบูธ 1 งาน (ดู + ปริ้น) ----------
+// รวมยอดอุปกรณ์เฉพาะใบจองที่ "ยืนยันแล้ว" เป็นรายการเดียว (เหมาะสำหรับเช็คของขึ้นรถ)
+// ส่วนใบจองที่ "รอการยืนยัน" แสดงแยกไว้ด้านล่างให้ดูเฉยๆ ไม่นับรวม/ไม่ปริ้น
+async function openBookingDetail(ev) {
+  const allBookings = await api('/api/bookings');
+  const bookingsForEvent = allBookings.filter((b) => b.event_id === ev.id);
+  const confirmed = bookingsForEvent.filter((b) => b.status === 'confirmed');
+  const pending = bookingsForEvent.filter((b) => b.status === 'pending');
+
+  // รวมยอดอุปกรณ์ชิ้นเดียวกันจากหลายใบจองเป็นแถวเดียว
+  const totals = {}; // equipment_id -> { name, code, qty }
+  for (const b of confirmed) {
+    for (const item of b.items) {
+      if (!totals[item.equipment_id]) {
+        totals[item.equipment_id] = { name: item.equipment_name, code: item.equipment_code, qty: 0 };
+      }
+      totals[item.equipment_id].qty += item.qty;
+    }
+  }
+  const totalRows = Object.values(totals).sort((a, b) => a.name.localeCompare(b.name, 'th'));
+
+  const dateRange = [ev.start_date, ev.end_date].filter(Boolean).join(' – ');
+  document.getElementById('bdEventName').textContent = `รายการจอง: ${ev.name}`;
+  document.getElementById('bdEventMeta').textContent =
+    [dateRange, ev.location].filter(Boolean).join(' • ') || 'ยังไม่ระบุวันที่/สถานที่';
+
+  const confirmedBody = document.getElementById('bdConfirmedBody');
+  confirmedBody.innerHTML = totalRows.length
+    ? totalRows.map((r) => `<tr><td>${r.name}</td><td>${r.code}</td><td class="right">${r.qty}</td></tr>`).join('')
+    : '<tr><td colspan="3" style="text-align:center;color:#999;padding:20px;">ยังไม่มีใบจองที่ยืนยันแล้วในงานนี้</td></tr>';
+
+  const pendingSection = document.getElementById('bdPendingSection');
+  const pendingBody = document.getElementById('bdPendingBody');
+  if (!pending.length) {
+    pendingSection.classList.add('hidden');
+    pendingBody.innerHTML = '';
+  } else {
+    pendingSection.classList.remove('hidden');
+    pendingBody.innerHTML = pending
+      .map(
+        (b) => `
+        <tr>
+          <td>#${b.id}</td>
+          <td>${b.items.map((i) => `${i.equipment_name} ×${i.qty}`).join(', ')}</td>
+          <td>${b.created_by || '-'}</td>
+        </tr>`
+      )
+      .join('');
+  }
+
+  openModal('bookingDetailModal');
+}
+
+function initBookingDetailModal() {
+  document.getElementById('btnCloseBookingDetail').addEventListener('click', () => closeModal('bookingDetailModal'));
+  document.getElementById('btnPrintBookingDetail').addEventListener('click', () => window.print());
 }
 
 async function deleteBooth(ev) {
@@ -892,6 +952,7 @@ async function init() {
   initTabs();
   initExpenseModals();
   initBoothModal();
+  initBookingDetailModal();
   initEquipmentModal();
   initSidebarDrawer();
 
