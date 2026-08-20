@@ -152,6 +152,69 @@ app.get('/api/me', (req, res) => {
   res.json({ id: req.user.id, username: req.user.username, display_name: req.user.display_name });
 });
 
+// แก้ไขบัญชีของตัวเอง (เปลี่ยนชื่อผู้ใช้ / ชื่อที่แสดง / รหัสผ่าน) — ทำได้เฉพาะบัญชีของ
+// ตัวเองเท่านั้น (ใช้ req.user.id จาก token เสมอ ไม่รับ id จาก body) เปลี่ยนรหัสผ่านได้
+// ก็ต่อเมื่อกรอกรหัสผ่านเดิมถูกต้องเท่านั้น กันคนอื่นแอบมาเปลี่ยนตอนเผลอไม่ได้ล็อกหน้าจอ
+app.patch('/api/account', wrap(async (req, res) => {
+  const { username, display_name, current_password, new_password } = req.body || {};
+  const uname = String(username || '').trim();
+  const dname = String(display_name || '').trim();
+
+  if (!uname || !dname) {
+    return res.status(400).json({ error: 'กรุณากรอกชื่อผู้ใช้และชื่อที่แสดง' });
+  }
+  if (!/^[a-zA-Z0-9_.-]{3,30}$/.test(uname)) {
+    return res.status(400).json({ error: 'ชื่อผู้ใช้ต้องเป็นตัวอักษรภาษาอังกฤษ ตัวเลข หรือ . _ - เท่านั้น (3-30 ตัวอักษร)' });
+  }
+  if (dname.length > 60) {
+    return res.status(400).json({ error: 'ชื่อที่แสดงยาวเกินไป (ไม่เกิน 60 ตัวอักษร)' });
+  }
+
+  const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
+  const user = rows[0];
+  if (!user) return res.status(404).json({ error: 'ไม่พบบัญชีผู้ใช้' });
+
+  let password_hash = user.password_hash;
+  if (new_password) {
+    if (!current_password) {
+      return res.status(400).json({ error: 'กรุณากรอกรหัสผ่านเดิมก่อนตั้งรหัสผ่านใหม่' });
+    }
+    const currentOk = await bcrypt.compare(current_password, user.password_hash);
+    if (!currentOk) {
+      return res.status(401).json({ error: 'รหัสผ่านเดิมไม่ถูกต้อง' });
+    }
+    if (new_password.length < 8) {
+      return res.status(400).json({ error: 'รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร' });
+    }
+    password_hash = await bcrypt.hash(new_password, 10);
+  }
+
+  let updated;
+  try {
+    const result = await pool.query(
+      'UPDATE users SET username = $1, display_name = $2, password_hash = $3 WHERE id = $4 RETURNING *',
+      [uname, dname, password_hash, req.user.id]
+    );
+    updated = result.rows[0];
+  } catch (err) {
+    if (err.code === '23505') { // unique_violation — username ซ้ำกับคนอื่น
+      return res.status(409).json({ error: 'ชื่อผู้ใช้นี้มีคนใช้แล้ว กรุณาเลือกชื่ออื่น' });
+    }
+    throw err;
+  }
+
+  // ออก token ใหม่ทันที เพราะ username/display_name ที่ฝังอยู่ใน token เปลี่ยนไปแล้ว
+  // ผู้ใช้จะได้ไม่ต้องล็อกอินใหม่หลังกดบันทึก
+  const token = signToken(updated);
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: req.protocol === 'https',
+    sameSite: 'lax',
+    maxAge: TOKEN_MAX_AGE_MS,
+  });
+  res.json({ ok: true, user: { id: updated.id, username: updated.username, display_name: updated.display_name } });
+}));
+
 // ========================= CATEGORIES (หมวดอุปกรณ์) =========================
 app.get('/api/categories', wrap(async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM categories ORDER BY id');
