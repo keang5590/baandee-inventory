@@ -249,7 +249,26 @@
       </div>
     </section>
     <section class="tab-panel hidden" id="tab-history">
-      <div class="content-main full"><h1>ประวัติการใช้งาน</h1><p class="subtitle">เร็วๆ นี้</p></div>
+      <div class="content-main full">
+        <h1>ประวัติการใช้งาน</h1>
+        <p class="subtitle">รายการเคลื่อนไหวทั้งหมดในระบบ เรียงจากล่าสุดไปเก่าสุด</p>
+
+        <div class="history-filters" id="historyFilters">
+          <button class="history-filter-chip active" data-category="all">ทั้งหมด</button>
+          <button class="history-filter-chip" data-category="equipment">🗂️ อุปกรณ์</button>
+          <button class="history-filter-chip" data-category="event">🏠 งานออกบูธ</button>
+          <button class="history-filter-chip" data-category="booking">✅ การจอง</button>
+          <button class="history-filter-chip" data-category="expense">💰 ค่าใช้จ่าย</button>
+          <button class="history-filter-chip" data-category="account">⚙️ บัญชี</button>
+        </div>
+
+        <div class="history-timeline" id="historyTimeline"></div>
+        <p class="history-empty hidden" id="historyEmpty">ยังไม่มีประวัติการใช้งานในหมวดนี้</p>
+
+        <div class="history-load-more-wrap">
+          <button class="btn-outline hidden" id="btnHistoryLoadMore">โหลดเพิ่ม</button>
+        </div>
+      </div>
     </section>
     <section class="tab-panel hidden" id="tab-reports">
       <div class="content-main full"><h1>รายงาน</h1><p class="subtitle">เร็วๆ นี้</p></div>
